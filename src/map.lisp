@@ -28,10 +28,11 @@
                         (setf level (set-tile level x y 2)))))
     level))
 
-(defun find-random-spawn (level)
-  "Finds a random empty tile (0) that is NOT stuck."
+(defun find-random-spawn (level &optional state)
+  "Finds a random empty tile (0) that is NOT stuck and NOT on a player."
   (let* ((h (fset:size level))
-         (w (fset:size (lookup level 0))))
+         (w (fset:size (lookup level 0)))
+         (players (and state (lookup state :players))))
     (loop
        for x = (random w)
        for y = (random h)
@@ -40,5 +41,12 @@
        for neighbors = (loop for (dx dy) in '((1 0) (-1 0) (0 1) (0 -1))
                              when (= 0 (get-tile level (float (+ x dx)) (float (+ y dy))))
                              collect t)
-       when (and (= 0 tile) (>= (length neighbors) 2))
+       ;; Check player overlap
+       for player-collision = (and players
+                                   (do-map (pid p players)
+                                     (when (and (> (lookup p :health) 0)
+                                                (< (abs (- x (lookup p :x))) 1.0)
+                                                (< (abs (- y (lookup p :y))) 1.0))
+                                       (return t))))
+       when (and (= 0 tile) (>= (length neighbors) 2) (not player-collision))
        return (map (:x (float x)) (:y (float y))))))

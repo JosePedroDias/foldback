@@ -96,10 +96,10 @@
                      (unless player-id
                        (setf player-id (fset:size clients))
                        (setf clients (with clients client-key player-id))
-                       (let* ((spawn (find-random-spawn level))
-                              (new-p (make-player :x (lookup spawn :x) :y (lookup spawn :y)))
-                              (cur-tick (world-current-tick world))
-                              (cur-s (lookup (world-history world) cur-tick)))
+                       (let* ((cur-tick (world-current-tick world))
+                              (cur-s (lookup (world-history world) cur-tick))
+                              (spawn (find-random-spawn level cur-s))
+                              (new-p (make-player :x (lookup spawn :x) :y (lookup spawn :y))))
                          (setf (world-history world)
                                (with (world-history world) cur-tick
                                      (with cur-s :players (with (lookup cur-s :players) player-id new-p))))))
@@ -109,10 +109,21 @@
                                         (loop for (k v) on raw-input by #'cddr
                                               do (setf m (with m k v)))
                                         m)))
-                           (setf (world-input-buffer world)
-                                 (with (world-input-buffer world) (1+ (world-current-tick world))
-                                       (with (or (lookup (world-input-buffer world) (1+ (world-current-tick world))) (map))
-                                             player-id input)))))))))
+                           (if (lookup input :leave)
+                               (let ((pid (lookup clients client-key)))
+                                 (setf clients (less clients client-key))
+                                 (setf client-last-seen (less client-last-seen client-key))
+                                 (setf last-client-states (less last-client-states pid))
+                                 (let* ((cur-tick (world-current-tick world))
+                                        (cur-s (lookup (world-history world) cur-tick)))
+                                   (setf (world-history world)
+                                         (with (world-history world) cur-tick
+                                               (with cur-s :players (less (lookup cur-s :players) pid))))))
+                               (setf (world-input-buffer world)
+                                     (with (world-input-buffer world) (1+ (world-current-tick world))
+                                           (with (or (lookup (world-input-buffer world) (1+ (world-current-tick world))) (map))
+                                                 player-id input))))))))))
+
               ;; 2. Cleanup Inactive Clients
               (let ((now (get-internal-real-time))
                     (timeout (* 300 internal-time-units-per-second)))

@@ -1,47 +1,45 @@
-# 💣 Sample Game: Bomberman
+# FoldBack: Engineering Sample
 
-This sample demonstrates a **Massive Multiplayer Bomberman** game using an authoritative Lisp server and a WebRTC-to-UDP Go gateway.
+**FoldBack** is a high-performance, authoritative game server engine written in **Common Lisp**. It treats the entire game world as a single, immutable value using **Persistent Data Structures (FSet)**.
 
-## 🏗️ Architecture
-1.  **Lisp Server (`src/`):** The authoritative engine. It manages player state, bomb explosions, and map collisions using immutable data structures.
-2.  **Go Gateway (`gateway/`):** A signaling server and WebRTC bridge. It converts browser DataChannel messages into UDP packets for the Lisp server.
-3.  **Browser Client (`gateway/index.html`):** A simple Canvas-based frontend that renders the game state and sends player inputs.
+## 🏗 System Architecture
 
-## 📋 Prerequisites
-- **Common Lisp:** [SBCL](http://www.sbcl.org/) (installed and in your PATH).
-- **Quicklisp:** [Quicklisp](https://www.quicklisp.org/beta/) (installed in your Lisp environment).
-- **Go:** [Go 1.20+](https://go.dev/) (installed and in your PATH).
+The engine is split into three main layers:
 
-## 🚀 Setup & Execution
+1.  **Functional Core (Lisp):** The pure simulation logic. `(update-game state inputs)` returns a new state. No side effects.
+2.  **Authoritative Server (Lisp):** A high-frequency UDP server (60Hz) that manages world history, input buffering, and delta-encoded broadcasts.
+3.  **Connectivity Gateway (Go):** A protocol-agnostic proxy that handles WebSockets and WebRTC, forwarding traffic to the Lisp core via local UDP.
 
-### 1. Install Dependencies
-Run the following command to download Lisp libraries (`fset`, `usocket`) and Go modules:
-```bash
-make setup
-```
+## 🕹 Game Features
 
-### 2. Start the Lisp Game Server
-In your first terminal, start the authoritative backend:
-```bash
-make lisp
-```
-*The server will listen for UDP packets on port `4444`.*
+-   **Massive Multiplayer:** Support for 50+ concurrent players with low-latency updates.
+-   **Destructible Environment:** Randomly generated maps with hard walls and destructible crates.
+-   **Advanced Bomb Mechanics:** 
+    *   **Chain Reactions:** Bombs can trigger other bombs.
+    *   **Passable-Until-Left:** Players can step out of bombs they've just planted without getting stuck.
+    *   **Visual Fire Areas:** Real-time tracking and rendering of explosion rays.
+-   **AI Sentry Bots:** Patrolling bots that move randomly and kill players on contact. Bots can also be destroyed by bombs.
+-   **Smart Respawn System:** 5-second respawn timer with a spawn algorithm that ensures players never spawn stuck or on top of another living player.
 
-### 3. Start the WebRTC Gateway
-In your second terminal, start the gateway and frontend server:
-```bash
-make gateway
-```
-*The gateway will start a signaling server and file server on [http://localhost:8080](http://localhost:8080).*
+## 📡 Networking Protocols
 
-### 4. Play the Game
-1.  Open [http://localhost:8080](http://localhost:8080) in your browser.
-2.  Open a **second tab or window** at the same address to test multiplayer.
-3.  **Controls:**
-    - **W/A/S/D:** Move your player.
-    - **Space:** Drop a bomb.
+The Go gateway serves the frontend and provides two connection methods:
 
-## 🛠️ Troubleshooting
-- **Lisp Errors:** Ensure `quicklisp` is correctly loaded in your `~/.sbclrc`.
-- **Connection Issues:** Verify that port `4444` (UDP) and `8080` (TCP) are not blocked by a firewall.
-- **Browser Compatibility:** Use a modern browser (Chrome, Firefox, or Edge) that supports WebRTC DataChannels.
+1.  **WebSockets (Default):** 
+    *   Fastest connection time.
+    *   Highly compatible with standard web infrastructure.
+    *   Accessed via `http://localhost:8080`
+2.  **WebRTC (DataChannels):** 
+    *   UDP-based peer-to-peer style communication.
+    *   Lower overhead for high-frequency input.
+    *   Accessed via `http://localhost:8080?protocol=webrtc`
+
+## 🛠 Developer Tooling
+
+-   **Autoplay Mode:** Test server load and bot behavior by appending `?autoplay=1` to the URL.
+-   **Automated Testing:** Full end-to-end multiplayer verification using **Playwright**.
+-   **Granular Unit Tests:** Isolated Lisp tests for physics, rounding, and game rules.
+
+---
+
+*“In FoldBack, time is just a variable you can reduce over.”*

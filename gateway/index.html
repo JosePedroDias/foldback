@@ -19,88 +19,104 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         let TILE_SIZE = 20; 
-        let pc, dc;
         let lastMsgTime = 0;
         
         const urlParams = new URLSearchParams(window.location.search);
         const isAutoplay = urlParams.get('autoplay') === '1';
+        const protocol = urlParams.get('protocol') || 'websockets';
+        
         if (isAutoplay) document.getElementById('autoplayMode').style.display = 'block';
 
         let localState = { tick: 0, players: {}, bombs: [], explosions: [], bots: [], level: [] };
         const keys = new Set();
         const colors = ["#3498db", "#e74c3c", "#2ecc71", "#f1c40f", "#9b59b6", "#1abc9c", "#e67e22"];
 
-        async function connect() {
-            pc = new RTCPeerConnection({
+        let connection = {
+            send: (data) => {},
+            isOpen: () => false
+        };
+
+        function onMessage(data) {
+            lastMsgTime = Date.now();
+            try {
+                const delta = JSON.parse(data);
+                applyDelta(delta);
+                render();
+                const mapW = localState.level.length > 0 ? localState.level[0].length : 0;
+                const mapH = localState.level.length;
+                document.getElementById('netStats').innerText = `[${protocol.toUpperCase()}] Tick: ${delta.t} | Map: ${mapW}x${mapH} | Players: ${Object.keys(localState.players).length}`;
+            } catch (err) {
+                console.error("Error parsing/applying delta:", err, data);
+            }
+        }
+
+        function onOpen() {
+            console.log(`${protocol} Open!`);
+            document.getElementById('netStats').innerText = "Connected!";
+            connection.send("()"); 
+
+            if (isAutoplay) {
+                setInterval(() => {
+                    if (!connection.isOpen()) return;
+                    const actions = [
+                        {dx: 0.1, dy: 0}, {dx: -0.1, dy: 0},
+                        {dx: 0, dy: 0.1}, {dx: 0, dy: -0.1},
+                        {dx: 0, dy: 0, drop: "t"}, {dx: 0, dy: 0}
+                    ];
+                    const act = actions[Math.floor(Math.random() * actions.length)];
+                    connection.send(`(:dx ${act.dx || 0} :dy ${act.dy || 0} :drop-bomb ${act.drop || "nil"})`);
+                }, 200);
+            }
+
+            function sendInput() {
+                if (connection.isOpen() && !isAutoplay) {
+                    let dx = 0, dy = 0, drop = "nil";
+                    if (keys.has('w')) dy = -0.1;
+                    if (keys.has('s')) dy = 0.1;
+                    if (keys.has('a')) dx = -0.1;
+                    if (keys.has('d')) dx = 0.1;
+                    if (keys.has(' ')) { drop = "t"; keys.delete(' '); } 
+                    
+                    if (dx !== 0 || dy !== 0 || drop === "t") {
+                        connection.send(`(:dx ${dx} :dy ${dy} :drop-bomb ${drop})`);
+                    }
+                }
+                setTimeout(sendInput, 16); 
+            }
+            sendInput();
+        }
+
+        async function connectWS() {
+            const ws = new WebSocket(`ws://${window.location.host}/ws`);
+            ws.onopen = onOpen;
+            ws.onmessage = (e) => onMessage(e.data);
+            connection = {
+                send: (data) => ws.send(data),
+                isOpen: () => ws.readyState === WebSocket.OPEN
+            };
+        }
+
+        async function connectWebRTC() {
+            const pc = new RTCPeerConnection({
                 iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
             });
+            const dc = pc.createDataChannel("foldback", { ordered: false, maxRetransmits: 0 });
 
-            dc = pc.createDataChannel("foldback", { ordered: false, maxRetransmits: 0 });
+            dc.onopen = onOpen;
+            dc.onmessage = (e) => onMessage(e.data);
 
-            dc.onmessage = (e) => {
-                lastMsgTime = Date.now();
-                try {
-                    const delta = JSON.parse(e.data);
-                    applyDelta(delta);
-                    render();
-                    const mapW = localState.level.length > 0 ? localState.level[0].length : 0;
-                    const mapH = localState.level.length;
-                    document.getElementById('netStats').innerText = `Tick: ${delta.t} | Map: ${mapW}x${mapH} | Players: ${Object.keys(localState.players).length}`;
-                } catch (err) {
-                    console.error("Error parsing/applying delta:", err, e.data);
-                }
-            };
-
-            dc.onopen = () => {
-                console.log("DataChannel Open!");
-                document.getElementById('netStats').innerText = "Connected!";
-                dc.send("()"); 
-
-                if (isAutoplay) {
-                    setInterval(() => {
-                        if (dc.readyState !== "open") return;
-                        const actions = [
-                            {dx: 0.1, dy: 0}, {dx: -0.1, dy: 0},
-                            {dx: 0, dy: 0.1}, {dx: 0, dy: -0.1},
-                            {dx: 0, dy: 0, drop: "t"}, {dx: 0, dy: 0}
-                        ];
-                        const act = actions[Math.floor(Math.random() * actions.length)];
-                        dc.send(`(:dx ${act.dx || 0} :dy ${act.dy || 0} :drop-bomb ${act.drop || "nil"})`);
-                    }, 200);
-                }
-
-                function sendInput() {
-                    if (dc.readyState === "open" && !isAutoplay) {
-                        let dx = 0, dy = 0, drop = "nil";
-                        if (keys.has('w')) dy = -0.1;
-                        if (keys.has('s')) dy = 0.1;
-                        if (keys.has('a')) dx = -0.1;
-                        if (keys.has('d')) dx = 0.1;
-                        if (keys.has(' ')) { drop = "t"; keys.delete(' '); } 
-                        
-                        if (dx !== 0 || dy !== 0 || drop === "t") {
-                            dc.send(`(:dx ${dx} :dy ${dy} :drop-bomb ${drop})`);
-                        }
-                    }
-                    setTimeout(sendInput, 16); 
-                }
-                sendInput();
+            connection = {
+                send: (data) => dc.send(data),
+                isOpen: () => dc.readyState === "open"
             };
 
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
             await new Promise(resolve => {
-                if (pc.iceGatheringState === 'complete') {
-                    resolve();
-                } else {
-                    function checkState() {
-                        if (pc.iceGatheringState === 'complete') {
-                            pc.removeEventListener('icegatheringstatechange', checkState);
-                            resolve();
-                        }
-                    }
-                    pc.addEventListener('icegatheringstatechange', checkState);
+                if (pc.iceGatheringState === 'complete') resolve();
+                else {
+                    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
                 }
             });
 
@@ -116,9 +132,7 @@
         function applyDelta(delta) {
             localState.tick = delta.t;
             if (delta.p) {
-                delta.p.forEach(dp => { 
-                    localState.players[dp.id] = dp; 
-                });
+                delta.p.forEach(dp => { localState.players[dp.id] = dp; });
             }
             if (delta.l) {
                 localState.level = delta.l;
@@ -137,49 +151,37 @@
             if (!localState.level || localState.level.length === 0) return;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // 1. Draw Level
             localState.level.forEach((row, y) => {
                 row.forEach((tile, x) => {
                     if (tile === 1) {
-                        ctx.fillStyle = "#444"; // Hard Wall
+                        ctx.fillStyle = "#444"; 
                         ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                     } else if (tile === 2) {
-                        ctx.fillStyle = "#8b4513"; // Crate (Brown)
+                        ctx.fillStyle = "#8b4513"; 
                         ctx.fillRect(x * TILE_SIZE + 1, y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-                        ctx.strokeStyle = "#5d2e0d";
-                        ctx.strokeRect(x * TILE_SIZE + 3, y * TILE_SIZE + 3, TILE_SIZE - 6, TILE_SIZE - 6);
                     }
                 });
             });
 
-            // 2. Draw Explosions (Fire)
             ctx.fillStyle = "rgba(255, 69, 0, 0.7)";
             localState.explosions.forEach(exp => {
                 ctx.fillRect(exp.x * TILE_SIZE, exp.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
             });
 
-            // 3. Draw Bombs
             localState.bombs.forEach(bomb => {
                 ctx.fillStyle = "#333";
                 ctx.beginPath();
                 ctx.arc(bomb.x * TILE_SIZE + TILE_SIZE/2, bomb.y * TILE_SIZE + TILE_SIZE/2, TILE_SIZE/2.5, 0, Math.PI*2);
                 ctx.fill();
-                // Timer indicator
                 ctx.fillStyle = "#fff";
                 ctx.fillRect(bomb.x * TILE_SIZE + 4, bomb.y * TILE_SIZE + 4, (bomb.tm/180)*(TILE_SIZE-8), 2);
             });
 
-            // 4. Draw Bots
-            ctx.fillStyle = "#ff00ff"; // Pink Bots
+            ctx.fillStyle = "#ff00ff"; 
             localState.bots.forEach(bot => {
                 ctx.fillRect(bot.x * TILE_SIZE + 4, bot.y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
-                ctx.fillStyle = "#000";
-                ctx.fillRect(bot.x * TILE_SIZE + 6, bot.y * TILE_SIZE + 6, 2, 2);
-                ctx.fillRect(bot.x * TILE_SIZE + 12, bot.y * TILE_SIZE + 6, 2, 2);
-                ctx.fillStyle = "#ff00ff";
             });
 
-            // 5. Draw Players
             Object.values(localState.players).forEach(p => {
                 const isDead = p.h <= 0;
                 ctx.fillStyle = isDead ? "#555" : colors[p.id % colors.length];
@@ -192,7 +194,8 @@
             });
         }
 
-        connect();
+        if (protocol === 'webrtc') connectWebRTC();
+        else connectWS();
     </script>
 </body>
 </html>

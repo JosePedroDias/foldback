@@ -34,7 +34,7 @@
       (let ((health (lookup p :health))
             (death-tick (lookup p :death-tick)))
         (when (and (<= health 0) death-tick (>= (- now-tick death-tick) respawn-timeout))
-          (let* ((spawn (find-random-spawn level))
+          (let* ((spawn (find-random-spawn level state-after-bots))
                  (new-p (make-player :x (lookup spawn :x) :y (lookup spawn :y))))
             (setf final-players (with final-players pid new-p))))))
 
