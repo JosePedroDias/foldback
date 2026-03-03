@@ -1,0 +1,21 @@
+{
+  "name": "foldback",
+  "version": "1.0.0",
+  "description": "**FoldBack** is a high-performance, authoritative game server engine written in **Common Lisp**. It is \"fundamentally different\" because it treats the entire game world as a single, immutable value using **Persistent Data Structures (FSet)**.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "test:multiplayer": "playwright test tests/multiplayer.spec.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@playwright/test": "^1.58.2",
+    "playwright": "^1.58.2"
+  }
+}
