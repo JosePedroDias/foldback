@@ -12,8 +12,8 @@
    the server correctly rolls back, applies the input, and yields the correct Tick 2 state."
   (format t "~%Testing Late Input Server Rollback...~%")
   (let* ((cs (map (:level (make-level 10 10)) (:bombs (map)) (:explosions (map)) (:bots (map))))
-         ;; Initial State: Player at (1.0, 1.0)
-         (s0 (with (initial-state :custom-state cs) :players (map (0 (make-player :x 1.0 :y 1.0)))))
+         ;; Initial State: Player at (1000, 1000)
+         (s0 (with (initial-state :custom-state cs) :players (map (0 (make-player :x 1000 :y 1000)))))
          
          ;; 1. Server simulates Tick 1 with NO inputs
          (s1-initial (update-game s0 (fset:map) #'bomberman-update))
@@ -51,14 +51,13 @@
     ;; 4. Verify the result
     (let* ((s2-final (lookup (world-history world) 2))
            (p (lookup (lookup s2-final :players) 0)))
-      (format t "  Final Position after server-side rollback: x=~F, y=~F~%" (lookup p :x) (lookup p :y))
+      (format t "  Final Position after server-side rollback: x=~A, y=~A~%" (lookup p :x) (lookup p :y))
       
-      ;; If Tick 1 was correctly resimulated with dx=0.1, and Tick 2 had no input,
-      ;; player should be at 1.1 (started at 1.0)
-      (if (and (> (lookup p :x) 1.05) (< (lookup p :x) 1.15))
+      ;; Starting at 1000, dx=0.1 (100), expected 1100
+      (if (= (lookup p :x) 1100)
           (format t "  PASS: Late input was correctly integrated via server rollback!~%")
           (progn
-            (format t "  FAIL: Player is at ~A, expected 1.1~%" (lookup p :x))
+            (format t "  FAIL: Player is at ~A, expected 1100~%" (lookup p :x))
             (uiop:quit 1))))))
 
 (test-late-input-server-rollback)

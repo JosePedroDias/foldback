@@ -12,6 +12,10 @@ class FoldBackWorld {
         this.totalRollbacks = 0;
         this.expectedGameId = expectedGameId;
         
+        // Reconciliation settings
+        this.reconciliationThresholdSq = 0.01; // 0.1 units squared
+        this.comparisonFn = null; // Optional custom comparison (stateA, stateB) -> boolean (true if match)
+
         // Latency tracking
         this.rtt = 0;
         this.maxLead = 10; // Default max lead in ticks
@@ -100,12 +104,19 @@ function processServerMessage(world, data, simulationFn, applyDeltaFn, syncFn) {
         const myAuthoritative = world.authoritativeState.players[world.myPlayerId];
 
         if (myPredicted && myAuthoritative) {
-            const dist = Math.sqrt(Math.pow(myPredicted.x - myAuthoritative.x, 2) + 
-                                 Math.pow(myPredicted.y - myAuthoritative.y, 2));
+            let mispredicted = false;
             
-            if (dist > 0.1) {
-                console.warn(`DETECTION_MISPREDICTION at tick ${serverTick}! Deviation: ${dist}`);
-                console.warn(`  Predicted: ${myPredicted.x},${myPredicted.y} | Auth: ${myAuthoritative.x},${myAuthoritative.y}`);
+            if (world.comparisonFn) {
+                mispredicted = !world.comparisonFn(predictedState, world.authoritativeState);
+            } else {
+                const dx = myPredicted.x - myAuthoritative.x;
+                const dy = myPredicted.y - myAuthoritative.y;
+                const distSq = dx * dx + dy * dy;
+                mispredicted = distSq > world.reconciliationThresholdSq;
+            }
+            
+            if (mispredicted) {
+                console.warn(`DETECTION_MISPREDICTION at tick ${serverTick}!`);
                 world.totalRollbacks++;
                 // 1. Set the foundation to the authoritative truth
                 world.history.set(serverTick, JSON.parse(JSON.stringify(world.authoritativeState)));
@@ -113,7 +124,7 @@ function processServerMessage(world, data, simulationFn, applyDeltaFn, syncFn) {
                 rollbackAndResimulate(world, serverTick + 1, world.inputBuffer, simulationFn);
                 world.localState = JSON.parse(JSON.stringify(world.history.get(world.currentTick)));
             } else {
-                // Foundation Fix
+                // Foundation Fix (keep authoritative values but no rollback needed)
                 world.history.set(serverTick, JSON.parse(JSON.stringify(world.authoritativeState)));
             }
         }

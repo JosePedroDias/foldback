@@ -1,6 +1,7 @@
 (ql:quickload :fset)
 
 (load "src/package.lisp")
+(load "src/fixed-point.lisp")
 (load "src/utils.lisp")
 (load "src/state.lisp")
 (load "src/sumo.lisp")
@@ -16,10 +17,10 @@
          (uiop:quit 1))))
 
 (defun run-sumo-unit-tests ()
-  (format t "~%Running Sumo Core Unit Tests...~%")
+  (format t "~%Running Sumo Core Unit Tests (Fixed-Point)...~%")
 
   ;; 1. Test movement and friction
-  (let* ((p0 (make-sumo-player :x 0.0 :y 0.0))
+  (let* ((p0 (make-sumo-player :x 0 :y 0))
          (s0 (initial-state :custom-state (fset:map)))
          (s0 (fset:with s0 :players (fset:map (0 p0))))
          ;; Input: Move right
@@ -31,16 +32,16 @@
     (assert-true (> (fset:lookup p1 :x) 0) "Position increased with velocity")
 
     ;; 2. Test boundary detection
-    (let* ((p-edge (make-sumo-player :x 11.0 :y 0.0)) ;; Ring radius is 10
+    (let* ((p-edge (make-sumo-player :x 11000 :y 0)) ;; Ring radius is 10000
            (s-edge (initial-state))
            (s-edge (fset:with s-edge :players (fset:map (0 p-edge))))
            (s-next (sumo-update s-edge (fset:map)))
            (p-next (fset:lookup (fset:lookup s-next :players) 0)))
-      (assert-true (= (fset:lookup p-next :h) 0) "Player is out of ring at distance 11.0")))
+      (assert-true (= (fset:lookup p-next :h) 0) "Player is out of ring at distance 11000")))
 
   ;; 3. Test elastic collision (Push)
-  (let* ((p1 (make-sumo-player :x 0.0 :y 0.0))
-         (p2 (make-sumo-player :x 0.2 :y 0.0)) ;; Very close to each other
+  (let* ((p1 (make-sumo-player :x 0 :y 0))
+         (p2 (make-sumo-player :x 200 :y 0)) ;; Very close to each other (radius is 500)
          (s0 (initial-state))
          (s0 (fset:with s0 :players (fset:map (1 p1) (2 p2))))
          (s1 (sumo-update s0 (fset:map)))

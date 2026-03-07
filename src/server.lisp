@@ -50,23 +50,26 @@
                           (player-id  (fset:lookup clients client-key)))
                      (setf client-last-seen (fset:with client-last-seen client-key (get-internal-real-time)))
                      (unless player-id
-                       (setf player-id *next-player-id*)
-                       (incf *next-player-id*)
-                       (cl:format t "New Client: ~A as PID ~A (Game: ~A)~%" client-key player-id game-id)
-                       (setf clients (fset:with clients client-key player-id))
-                       
-                       (let ((welcome (cl:format nil "{\"your_id\":~A,\"game_id\":\"~A\"}" player-id game-id)))
-                         (usocket:socket-send socket welcome (length welcome) :host remote-host :port remote-port))
-
                        (let* ((cur-tick (world-current-tick world))
                               (cur-s (or (fset:lookup (world-history world) cur-tick)
                                          (initial-state :custom-state initial-custom-state)))
-                              (new-p (funcall join-fn player-id cur-s)))
-                         (setf (world-history world)
-                               (fset:with (world-history world) cur-tick
-                                     (fset:with cur-s :players (fset:with (fset:lookup cur-s :players) player-id new-p))))))
+                              (new-p (funcall join-fn *next-player-id* cur-s)))
+                         (if new-p
+                             (let ((pid *next-player-id*))
+                               (setf player-id pid)
+                               (incf *next-player-id*)
+                               (cl:format t "New Client: ~A as PID ~A (Game: ~A)~%" client-key pid game-id)
+                               (setf clients (fset:with clients client-key pid))
+                               
+                               (let ((welcome (cl:format nil "{\"your_id\":~A,\"game_id\":\"~A\"}" pid game-id)))
+                                 (usocket:socket-send socket welcome (length welcome) :host remote-host :port remote-port))
+
+                               (setf (world-history world)
+                                     (fset:with (world-history world) cur-tick
+                                           (fset:with cur-s :players (fset:with (fset:lookup cur-s :players) pid new-p)))))
+                             (cl:format t "Join Rejected for ~A (Game Full)~%" client-key))))
                      
-                     (when (> received-length 0)
+                     (when (and player-id (> received-length 0))
                        (let ((raw-input (ignore-errors
                                           (read-from-string
                                            (let ((s (make-string received-length)))

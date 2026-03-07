@@ -14,6 +14,11 @@ lisp-sumo:
 		 --eval "(ql:quickload :foldback)" \
 		 --eval "(foldback:start-server :game-id \"sumo\" :simulation-fn #'foldback:sumo-update :serialization-fn #'foldback:sumo-serialize :join-fn #'foldback:sumo-join)"
 
+lisp-airhockey:
+	sbcl --load foldback.asd \
+		 --eval "(ql:quickload :foldback)" \
+		 --eval "(foldback:start-server :game-id \"airhockey\" :simulation-fn #'foldback:airhockey-update :serialization-fn #'foldback:airhockey-serialize :join-fn #'foldback:airhockey-join)"
+
 check-lisp:
 	sbcl --non-interactive \
 		 --load foldback.asd \
@@ -23,7 +28,7 @@ check-lisp:
 gateway:
 	cd gateway && go run main.go
 
-test: test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit
+test: test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit test-airhockey-cross
 
 test-lisp:
 	sbcl --non-interactive \
@@ -54,6 +59,15 @@ test-sumo-cross:
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/sumo-cross-test.lisp
+
+test-airhockey-cross:
+	@echo "--- Running Air Hockey Cross-Platform Tests (JS) ---"
+	node tests/airhockey-cross-test.js
+	@echo "\n--- Running Air Hockey Cross-Platform Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/airhockey-cross-test.lisp
 
 test-sumo-unit:
 	@echo "--- Running Sumo Core Unit Tests (Lisp) ---"

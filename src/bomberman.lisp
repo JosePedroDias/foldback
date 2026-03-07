@@ -1,50 +1,233 @@
 (in-package #:foldback)
 
-;; --- Bomberman Constants ---
-(defparameter +player-size+ 0.7) 
-(defparameter +half-size+ (/ +player-size+ 2.0))
-(defparameter +respawn-timeout+ (* 5 60)) ; 5 seconds at 60Hz
+;; --- Bomberman Constants (Fixed-Point Scale 1000) ---
+(defparameter +player-size+ 700) 
+(defparameter +half-size+ 350)
+(defparameter +respawn-timeout+ 300) ; 5 seconds at 60Hz
 
-;; --- Player & Level Creation ---
-
-(defun make-player (&key (x 0) (y 0) (health 100) (death-tick nil))
-  "Create an immutable player map."
-  (map (:x (float x)) 
-       (:y (float y)) 
-       (:health health)
-       (:death-tick death-tick)))
+;; --- Level & Map Logic ---
 
 (defun make-level (width height)
   "Create an immutable level represented as a map of rows (maps)."
-  (let ((m (map)))
+  (let ((m (fset:map)))
     (loop for y from 0 below height
-          for row = (map)
+          for row = (fset:map)
           do (loop for x from 0 below width
-                   do (setf row (with row x 0))) ; Default empty
-          do (setf m (with m y row)))
+                   do (setf row (fset:with row x 0))) ; Default empty
+          do (setf m (fset:with m y row)))
     m))
 
-(defun bomberman-join (player-id state)
-  "Initialize a new Bomberman player at a random spawn point."
-  (let* ((cs (lookup state :custom-state))
-         (level (lookup cs :level))
-         (spawn (foldback:find-random-spawn level state)))
-    (make-player :x (lookup spawn :x) :y (lookup spawn :y))))
-
-;; --- Bomberman Physics & Collisions ---
+(defun set-tile (level x y val)
+  "Immutable tile update: returns a new level. Indices are integers."
+  (let ((row (fset:lookup level y)))
+    (fset:with level y (fset:with row x val))))
 
 (defun get-tile (level x y)
-  (let ((ix (floor (+ x 0.5)))
-        (iy (floor (+ y 0.5))))
+  "x,y are fixed-point. Convert to integer indices."
+  (let ((ix (floor (fp-to-float (fp-add x 500))))
+        (iy (floor (fp-to-float (fp-add y 500)))))
     (if (and (>= iy 0) (< iy (fset:size level))
              (>= ix 0) (< ix (fset:size (fset:lookup level iy))))
         (fset:lookup (fset:lookup level iy) ix)
         1)))
 
-(defun set-tile (level x y val)
-  "Immutable tile update: returns a new level."
-  (let ((row (lookup level y)))
-    (with level y (with row x val))))
+(defun find-random-spawn (level &optional state)
+  "Finds a random empty tile (0) that is NOT stuck and NOT on a player.
+   Returns fixed-point coordinates."
+  (let* ((h (fset:size level))
+         (w (fset:size (fset:lookup level 0)))
+         (players (and state (fset:lookup state :players))))
+    (loop
+       for x = (random w)
+       for y = (random h)
+       for fpx = (fp-from-float (float x))
+       for fpy = (fp-from-float (float y))
+       for tile = (get-tile level fpx fpy)
+       ;; Check neighbors: must have at least 2 clear paths
+       for neighbors = (loop for (dx dy) in '((1 0) (-1 0) (0 1) (0 -1))
+                             when (= 0 (get-tile level (fp-from-float (float (+ x dx))) (fp-from-float (float (+ y dy)))))
+                             collect t)
+       ;; Check player overlap (using FP)
+       for player-collision = (and players
+                                   (fset:do-map (pid p players)
+                                     (declare (ignore pid))
+                                     (when (and (> (fset:lookup p :health) 0)
+                                                (< (fp-abs (fp-sub fpx (fset:lookup p :x))) 1000)
+                                                (< (fp-abs (fp-sub fpy (fset:lookup p :y))) 1000))
+                                       (return t))))
+       when (and (= 0 tile) (>= (length neighbors) 2) (not player-collision))
+       return (fset:map (:x fpx) (:y fpy)))))
+
+(defun make-bomberman-map (&optional (width 13) (height 11))
+  "Creates a grid of specified size with hard blocks."
+  (let ((level (make-level width height)))
+    ;; 1. Add Hard Blocks
+    (loop for y from 1 below (1- height) by 2
+          do (loop for x from 1 below (1- width) by 2
+                   do (setf level (set-tile level x y 1))))
+    ;; 2. Add Perimeter
+    (loop for x from 0 below width
+          do (setf level (set-tile level x 0 1))
+          do (setf level (set-tile level x (1- height) 1)))
+    (loop for y from 0 below height
+          do (setf level (set-tile level 0 y 1))
+          do (setf level (set-tile level (1- width) y 1)))
+    
+    ;; 3. Add Soft Blocks (Crates)
+    (loop for y from 0 below height
+          do (loop for x from 0 below width
+                   do (when (and (= (get-tile level (fp-from-float (float x)) (fp-from-float (float y))) 0)
+                                 (> (random 100) 70)) ; 30% chance for crate
+                        (setf level (set-tile level x y 2)))))
+    level))
+
+;; --- Bomb Logic ---
+
+(defun bomberman-spawn-bomb (player custom-state)
+  "Indices are integers, but player pos is FP."
+  (let* ((bx (cl:floor (fp-to-float (fp-add (fset:lookup player :x) 500))))
+         (by (cl:floor (fp-to-float (fp-add (fset:lookup player :y) 500))))
+         (bid (cl:format nil "~A,~A" bx by))
+         (bombs (or (fset:lookup custom-state :bombs) (fset:map))))
+    (if (not (fset:lookup bombs bid))
+        (let ((new-bomb (fset:map (:x bx) (:y by) (:tm 180)))) ; 3 seconds
+          (fset:with custom-state :bombs (fset:with bombs bid new-bomb)))
+        custom-state)))
+
+(defun update-bombs (state inputs)
+  (let* ((custom (fset:lookup state :custom-state))
+         (players (fset:lookup state :players))
+         (bombs (or (fset:lookup custom :bombs) (fset:map)))
+         (explosions (fset:map))
+         (level (fset:lookup custom :level))
+         (next-bombs (fset:map)))
+
+    ;; 1. Process new bomb placements
+    (fset:do-map (pid p players)
+      (let ((input (and inputs (fset:lookup inputs pid))))
+        (when (and input (fset:lookup input :drop-bomb))
+          (setf custom (bomberman-spawn-bomb p custom))
+          (setf bombs (fset:lookup custom :bombs)))))
+
+    ;; 2. Tick existing bombs
+    (fset:do-map (bid b bombs)
+      (let ((tm (1- (fset:lookup b :tm))))
+        (if (<= tm 0)
+            ;; EXPLODE!
+            (let ((bx (fset:lookup b :x))
+                  (by (fset:lookup b :y)))
+              (setf explosions (fset:with explosions (cl:format nil "~A,~A" bx by) 30))
+              ;; Ray-casting explosion in cardinal directions
+              (loop for (dx dy) in '((1 0) (-1 0) (0 1) (0 -1))
+                    do (loop for r from 1 to 3
+                             for ex = (+ bx (* dx r))
+                             for ey = (+ by (* dy r))
+                             for tile = (get-tile level (fp-from-float (cl:float ex)) (fp-from-float (cl:float ey)))
+                             do (setf explosions (fset:with explosions (cl:format nil "~A,~A" ex ey) 30))
+                             when (or (= tile 1) (= tile 2))
+                               do (progn
+                                    (when (= tile 2) ;; Destroy Crate
+                                      (setf level (set-tile level ex ey 0)))
+                                    (return))))) ;; Stop ray at wall/crate
+            (setf next-bombs (fset:with next-bombs bid (fset:with b :tm tm))))))
+
+    ;; 3. Kill players in explosions
+    (let ((final-players players))
+      (fset:do-map (eid time explosions)
+        (declare (ignore time))
+        (let* ((coords (uiop:split-string eid :separator ","))
+               (ex (cl:parse-integer (cl:first coords)))
+               (ey (cl:parse-integer (cl:second coords))))
+          (fset:do-map (pid p final-players)
+            (when (and (> (fset:lookup p :health) 0)
+                       (< (fp-abs (fp-sub (fp-from-float (cl:float ex)) (fset:lookup p :x))) 800)
+                       (< (fp-abs (fp-sub (fp-from-float (cl:float ey)) (fset:lookup p :y))) 800))
+              (let ((dead-p (fset:with p :health 0)))
+                (setf dead-p (fset:with dead-p :death-tick (fset:lookup state :tick)))
+                (setf final-players (fset:with final-players pid dead-p)))))))
+      
+      (let* ((final-custom (fset:with custom :bombs next-bombs))
+             (final-custom (fset:with final-custom :explosions explosions))
+             (final-custom (fset:with final-custom :level level)))
+        (fset:with (fset:with state :custom-state final-custom) :players final-players)))))
+
+;; --- Bot Logic ---
+
+(defun spawn-bots (level count)
+  "Returns a map of bot-id -> bot-map."
+  (let ((bots (fset:map)))
+    (loop for i from 0 below count
+          for spawn = (find-random-spawn level)
+          do (setf bots (fset:with bots i 
+                                   (fset:map (:x (fset:lookup spawn :x)) 
+                                             (:y (fset:lookup spawn :y)) 
+                                             (:dx 25) ;; 0.025 in FP
+                                             (:dy 0)))))
+    bots))
+
+(defun update-bots (state)
+  "Bot movement and player killing (Fixed-Point)."
+  (let* ((custom (fset:lookup state :custom-state))
+         (seed   (or (fset:lookup custom :seed) 0))
+         (bots   (fset:lookup custom :bots))
+         (level  (fset:lookup custom :level))
+         (players (fset:lookup state :players))
+         (next-bots (fset:map))
+         (next-players players))
+
+    (fset:do-map (bid bot bots)
+      (let* ((x (fset:lookup bot :x))
+             (y (fset:lookup bot :y))
+             (dx (fset:lookup bot :dx))
+             (dy (fset:lookup bot :dy))
+             (nx (fp-add x dx))
+             (ny (fp-add y dy)))
+
+        ;; Simple wall bounce
+        (when (/= (get-tile level nx ny) 0)
+          (multiple-value-bind (new-seed dir) (fb-rand-int seed 4)
+            (setf seed new-seed)
+            (case dir
+              (0 (setf dx 25 dy 0))
+              (1 (setf dx -25 dy 0))
+              (2 (setf dx 0 dy 25))
+              (3 (setf dx 0 dy -25)))
+            (setf nx x ny y)))
+
+        (let ((new-bot (fset:with bot :x nx)))
+          (setf new-bot (fset:with new-bot :y ny))
+          (setf new-bot (fset:with new-bot :dx dx))
+          (setf new-bot (fset:with new-bot :dy dy))
+          (setf next-bots (fset:with next-bots bid new-bot)))
+
+        ;; Kill players
+        (fset:do-map (pid p next-players)
+          (when (and (> (fset:lookup p :health) 0)
+                     (< (fp-abs (fp-sub nx (fset:lookup p :x))) 600)
+                     (< (fp-abs (fp-sub ny (fset:lookup p :y))) 600))
+            (let ((dead-p (fset:with p :health 0)))
+              (setf dead-p (fset:with dead-p :death-tick (fset:lookup state :tick)))
+              (setf next-players (fset:with next-players pid dead-p)))))))
+
+    (fset:with (fset:with state :players next-players)
+               :custom-state (fset:with (fset:with custom :bots next-bots) :seed seed))))
+
+;; --- Player Logic ---
+
+(defun make-player (&key (x 0) (y 0) (health 100) (death-tick nil))
+  "Create an immutable player map using fixed-point coordinates."
+  (fset:map (:x x) 
+            (:y y) 
+            (:health health)
+            (:death-tick death-tick)))
+
+(defun bomberman-join (player-id state)
+  (declare (ignore player-id))
+  "Initialize a new Bomberman player at a random spawn point."
+  (let* ((cs (fset:lookup state :custom-state))
+         (level (fset:lookup cs :level))
+         (spawn (find-random-spawn level state)))
+    (make-player :x (fset:lookup spawn :x) :y (fset:lookup spawn :y))))
 
 (defun get-overlapping-bombs (x y bombs)
   "Return a set of bomb-ids that overlap the AABB at (x,y)."
@@ -52,73 +235,70 @@
         (ids (fset:set)))
     (loop for ox in (list (- h) h)
           do (loop for oy in (list (- h) h)
-                   do (let* ((bx (floor (+ (+ x ox) 0.5)))
-                             (by (floor (+ (+ y oy) 0.5)))
-                             (bid (format nil "~A,~A" bx by)))
-                        (when (lookup bombs bid)
-                          (setf ids (with ids bid))))))
+                   do (let* ((bx (floor (fp-to-float (fp-add (fp-add x ox) 500))))
+                             (by (floor (fp-to-float (fp-add (fp-add y oy) 500))))
+                             (bid (cl:format nil "~A,~A" bx by)))
+                        (when (fset:lookup bombs bid)
+                          (setf ids (fset:with ids bid))))))
     ids))
 
 (defun collides-with-player? (x y pid state)
-  "Check if player at (x,y) overlaps any OTHER living player."
-  (let ((players (lookup state :players)))
-    (do-map (other-pid other-p players)
-      (unless (or (equal? pid other-pid) (<= (lookup other-p :health) 0))
-        (let ((ox (lookup other-p :x))
-              (oy (lookup other-p :y)))
-          (when (and (< (abs (- x ox)) +player-size+)
-                     (< (abs (- y oy)) +player-size+))
-            (return-from collides-with-player? t)))))
+  "Check if player at (x,y) overlaps any OTHER living player using shared AABB helper."
+  (let ((players (fset:lookup state :players)))
+    (fset:do-map (other-pid other-p players)
+      (unless (or (fset:equal? pid other-pid) (<= (fset:lookup other-p :health) 0))
+        (when (fp-aabb-overlap-p x y +player-size+ +player-size+
+                                 (fset:lookup other-p :x) (fset:lookup other-p :y)
+                                 +player-size+ +player-size+)
+          (return-from collides-with-player? t))))
     nil))
 
 (defun bomberman-collides? (x y pid state &optional allowed-bomb-ids)
   "Check if a player at (x,y) overlaps any non-walkable tile, bomb (unless allowed), or other player."
-  (let* ((custom (lookup state :custom-state))
-         (level  (lookup custom :level))
-         (bombs  (or (lookup custom :bombs) (map)))
+  (let* ((custom (fset:lookup state :custom-state))
+         (level  (fset:lookup custom :level))
+         (bombs  (or (fset:lookup custom :bombs) (fset:map)))
          (h +half-size+)
          (offsets (list (list (- h) (- h)) (list h (- h))
                         (list (- h) h) (list h h))))
     (or (loop for (ox oy) in offsets
-              for px = (+ x ox)
-              for py = (+ y oy)
+              for px = (fp-add x ox)
+              for py = (fp-add y oy)
               for tile = (get-tile level px py)
-              for bomb-id = (format nil "~A,~A" (floor (+ px 0.5)) (floor (+ py 0.5)))
+              for bomb-id = (cl:format nil "~A,~A" (floor (fp-to-float (fp-add px 500))) (floor (fp-to-float (fp-add py 500))))
               when (or (/= tile 0)
-                       (and (lookup bombs bomb-id)
+                       (and (fset:lookup bombs bomb-id)
                             (not (fset:lookup allowed-bomb-ids bomb-id))))
               return t)
         (collides-with-player? x y pid state))))
 
 (defun bomberman-move-and-slide (pid player input state)
-  "Resolves movement with collision detection."
-  (let* ((x      (lookup player :x))
-         (y      (lookup player :y))
-         (health (lookup player :health)))
+  "Resolves movement with fixed-point collision detection."
+  (let* ((x      (fset:lookup player :x))
+         (y      (fset:lookup player :y))
+         (health (fset:lookup player :health)))
     (if (<= health 0)
         player
-        (let* ((dx     (or (lookup input :dx) 0.0))
-               (dy     (or (lookup input :dy) 0.0))
-               (custom (lookup state :custom-state))
-               (bombs  (or (lookup custom :bombs) (map)))
+        (let* ((dx     (fp-from-float (or (fset:lookup input :dx) 0.0)))
+               (dy     (fp-from-float (or (fset:lookup input :dy) 0.0)))
+               (custom (fset:lookup state :custom-state))
+               (bombs  (or (fset:lookup custom :bombs) (fset:map)))
                (allowed-bomb-ids (get-overlapping-bombs x y bombs))
                (final-x x)
                (final-y y))
-          (unless (bomberman-collides? (+ x dx) y pid state allowed-bomb-ids)
-            (setf final-x (+ x dx)))
-          (unless (bomberman-collides? final-x (+ y dy) pid state allowed-bomb-ids)
-            (setf final-y (+ y dy)))
-          (with (with player :x final-x) :y final-y)))))
+          (unless (bomberman-collides? (fp-add x dx) y pid state allowed-bomb-ids)
+            (setf final-x (fp-add x dx)))
+          (unless (bomberman-collides? final-x (fp-add y dy) pid state allowed-bomb-ids)
+            (setf final-y (fp-add y dy)))
+          (fset:with (fset:with player :x final-x) :y final-y)))))
 
-;; --- Bomberman Main Loop ---
+;; --- Main Entry Points ---
 
 (defun bomberman-update (state inputs)
-  "The full Bomberman simulation step."
+  "The full Bomberman simulation step (Fixed-Point)."
   (let ((actual-inputs (or inputs (fset:map))))
-    (when (not (fset:empty? actual-inputs))
-      (format t "SIM: Tick ~A | Inputs: ~A~%" (lookup state :tick) actual-inputs))
-    (let* ((players (lookup state :players))
-           (tick    (lookup state :tick))
+    (let* ((players (fset:lookup state :players))
+           (tick    (fset:lookup state :tick))
            (inputs  actual-inputs)
            ;; 1. Run Player Physics
            (state-after-players 
@@ -138,71 +318,70 @@
            (state-after-bots (update-bots state-after-bombs))
            
            ;; 4. Handle Respawns
-           (final-players (lookup state-after-bots :players))
-           (level (lookup (lookup state-after-bots :custom-state) :level))
-           (now-tick (lookup state-after-bots :tick)))
+           (final-players (fset:lookup state-after-bots :players))
+           (level (fset:lookup (fset:lookup state-after-bots :custom-state) :level))
+           (now-tick (fset:lookup state-after-bots :tick)))
 
-      (do-map (pid p final-players)
-        (let ((health (lookup p :health))
-              (death-tick (lookup p :death-tick)))
-          (when (and (<= health 0) death-tick (>= (- now-tick death-tick) +respawn-timeout+))
+      (fset:do-map (pid p final-players)
+        (let ((health (fset:lookup p :health))
+              (death-tick (fset:lookup p :death-tick)))
+          (when (and (<= health 0) death-tick (>= (fp-sub now-tick death-tick) +respawn-timeout+))
             (let* ((spawn (find-random-spawn level state-after-bots))
-                   (new-p (make-player :x (lookup spawn :x) :y (lookup spawn :y))))
-              (setf final-players (with final-players pid new-p))))))
+                   (new-p (make-player :x (fset:lookup spawn :x) :y (fset:lookup spawn :y))))
+              (setf final-players (fset:with final-players pid new-p))))))
 
-      (with state-after-bots :players final-players))))
-
-;; --- Serialization ---
+      (fset:with state-after-bots :players final-players))))
 
 (defun bomberman-serialize (state last-state)
-  (let* ((players (lookup state :players))
-         (custom  (lookup state :custom-state))
-         (level   (lookup custom :level))
-         (last-level (and last-state (lookup (lookup last-state :custom-state) :level)))
-         (bombs   (or (lookup custom :bombs) (map)))
-         (explosions (or (lookup custom :explosions) (map)))
-         (bots    (or (lookup custom :bots) (map)))
-         (seed    (or (lookup custom :seed) 0))
-         (tick    (lookup state :tick))
-         (parts   (list (format nil "\"t\":~A" tick)
-                        (format nil "\"s\":~A" seed))))
+  (let* ((players (fset:lookup state :players))
+         (custom  (fset:lookup state :custom-state))
+         (level   (fset:lookup custom :level))
+         (last-level (and last-state (fset:lookup (fset:lookup last-state :custom-state) :level)))
+         (bombs   (or (fset:lookup custom :bombs) (fset:map)))
+         (explosions (or (fset:lookup custom :explosions) (fset:map)))
+         (bots    (or (fset:lookup custom :bots) (fset:map)))
+         (seed    (or (fset:lookup custom :seed) 0))
+         (tick    (fset:lookup state :tick))
+         (parts   (list (cl:format nil "\"t\":~A" tick)
+                        (cl:format nil "\"s\":~A" seed))))
     
     (let ((p-deltas nil))
-      (do-map (id p players)
-        (push (format nil "{\"id\":~A,\"x\":~F,\"y\":~F,\"h\":~A}" 
-                      id (lookup p :x) (lookup p :y) (lookup p :health))
+      (fset:do-map (id p players)
+        (push (cl:format nil "{\"id\":~A,\"x\":~A,\"y\":~A,\"h\":~A}" 
+                      id (fset:lookup p :x) (fset:lookup p :y) (fset:lookup p :health))
               p-deltas))
       (when p-deltas
-        (push (format nil "\"p\":[~{~A~^,~}]" (nreverse p-deltas)) parts)))
+        (push (cl:format nil "\"p\":[~{~A~^,~}]" (nreverse p-deltas)) parts)))
     
-    (when (and level (or (not last-level) (not (equal? level last-level))))
+    (when (and level (or (not last-level) (not (fset:equal? level last-level))))
       (let ((rows nil))
         (loop for y from 0 below (fset:size level)
-              for row = (lookup level y)
-              do (push (format nil "[~{~A~^,~}]" 
+              for row = (fset:lookup level y)
+              do (push (cl:format nil "[~{~A~^,~}]" 
                                (loop for x from 0 below (fset:size row)
-                                     collect (lookup row x)))
+                                     collect (fset:lookup row x)))
                        rows))
-        (push (format nil "\"l\":[~{~A~^,~}]" (nreverse rows)) parts)))
+        (push (cl:format nil "\"l\":[~{~A~^,~}]" (nreverse rows)) parts)))
     
     (let ((b-list nil))
-      (do-map (bid b bombs)
-        (push (format nil "{\"x\":~A,\"y\":~A,\"tm\":~A}"
-                      (lookup b :x) (lookup b :y) (lookup b :timer))
+      (fset:do-map (bid b bombs)
+        (push (cl:format nil "{\"x\":~A,\"y\":~A,\"tm\":~A}"
+                      (fset:lookup b :x) (fset:lookup b :y) (fset:lookup b :tm))
               b-list))
-      (push (format nil "\"b\":[~{~A~^,~}]" (nreverse b-list)) parts))
+      (push (cl:format nil "\"b\":[~{~A~^,~}]" (nreverse b-list)) parts))
 
     (let ((e-list nil))
-      (do-map (key timer explosions)
+      (fset:do-map (key timer explosions)
+        (declare (ignore timer))
         (let* ((coords (uiop:split-string key :separator ","))
                (x (first coords))
                (y (second coords)))
-          (push (format nil "{\"x\":~A,\"y\":~A}" x y) e-list)))
-      (push (format nil "\"e\":[~{~A~^,~}]" (nreverse e-list)) parts))
+          (push (cl:format nil "{\"x\":~A,\"y\":~A}" x y) e-list)))
+      (push (cl:format nil "\"e\":[~{~A~^,~}]" (nreverse e-list)) parts))
 
     (let ((bot-list nil))
-      (do-map (id bot bots)
-        (push (format nil "{\"x\":~F,\"y\":~F}" (lookup bot :x) (lookup bot :y)) bot-list))
-      (push (format nil "\"bots\":[~{~A~^,~}]" (nreverse bot-list)) parts))
+      (fset:do-map (id bot bots)
+        (push (cl:format nil "{\"x\":~A,\"y\":~A}" (fset:lookup bot :x) (fset:lookup bot :y)) bot-list))
+      (push (cl:format nil "\"bots\":[~{~A~^,~}]" (nreverse bot-list)) parts))
     
-    (format nil "{~{~A~^,~}}" (nreverse parts))))
+    (cl:format nil "{~{~A~^,~}}" (nreverse parts))))

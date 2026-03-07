@@ -13,6 +13,8 @@
     <div class="stats" id="netStats">Connecting...</div>
     <canvas id="gameCanvas" width="600" height="600"></canvas>
 
+    <script src="fixed-point.js"></script>
+    <script src="physics.js"></script>
     <script src="foldback-engine.js"></script>
     <script src="sumo-logic.js"></script>
     <script>
@@ -24,6 +26,7 @@
         const protocol = urlParams.get('protocol') || 'websockets';
 
         const world = new FoldBackWorld("sumo");
+        world.reconciliationThresholdSq = 1; // Any integer difference in FP triggers rollback
         window.world = world; // Expose for testing
         const keys = new Set();
         let connection = { send: (data) => {}, isOpen: () => false };
@@ -79,8 +82,8 @@
                 if (pA && pB) {
                     interpState.players[id] = {
                         ...pB,
-                        x: pA.x + (pB.x - pA.x) * 0.5, // Simple midpoint for POC
-                        y: pA.y + (pB.y - pA.y) * 0.5
+                        x: fpRound(pA.x + (pB.x - pA.x) * 0.5),
+                        y: fpRound(pA.y + (pB.y - pA.y) * 0.5)
                     };
                 }
             }

@@ -1,89 +1,96 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>FoldBack: Massive Multiplayer</title>
+    <title>FoldBack: Air Hockey</title>
     <style>
-        body { background: #222; color: #fff; font-family: monospace; text-align: center; overflow: hidden; }
-        canvas { border: 4px solid #444; background: #000; }
-        .stats { color: #aaa; padding: 10px; }
-        .autoplay-indicator { color: #2ecc71; font-weight: bold; margin-bottom: 5px; }
+        body { background: #222; color: #fff; font-family: monospace; text-align: center; overflow: hidden; margin: 0; padding: 0; }
+        canvas { border: 4px solid #444; background: #000; cursor: none; }
+        .stats { color: #aaa; padding: 10px; position: absolute; top: 0; width: 100%; pointer-events: none; }
     </style>
 </head>
 <body>
-    <h1>FoldBack: 50+ Player Lisp Server</h1>
-    <div id="autoplayMode" class="autoplay-indicator" style="display:none;">AUTOPLAY ACTIVE</div>
     <div class="stats" id="netStats">Connecting...</div>
     <canvas id="gameCanvas"></canvas>
 
     <script src="fixed-point.js"></script>
     <script src="physics.js"></script>
     <script src="foldback-engine.js"></script>
-    <script src="bomberman-logic.js"></script>
+    <script src="airhockey-logic.js"></script>
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const TILE_SIZE = 20; 
         
-        const urlParams = new URLSearchParams(window.location.search);
-        const isAutoplay = urlParams.get('autoplay') === '1';
-        const protocol = urlParams.get('protocol') || 'websockets';
-        if (isAutoplay) document.getElementById('autoplayMode').style.display = 'block';
+        // Resize canvas to fit window
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
 
-        const world = new FoldBackWorld("bomberman");
-        const keys = new Set();
+        const urlParams = new URLSearchParams(window.location.search);
+        const protocol = urlParams.get('protocol') || 'websockets';
+
+        const world = new FoldBackWorld("airhockey");
+        world.reconciliationThresholdSq = 1; // Any integer difference in FP triggers rollback
         let connection = { send: (data) => {}, isOpen: () => false };
+        let mouseX = 0, mouseY = 0;
 
         function onMessage(data) {
-            const res = processServerMessage(world, data, bombermanUpdate, bombermanApplyDelta, bombermanSync);
+            const res = processServerMessage(world, data, airhockeyUpdate, airhockeyApplyDelta, airhockeySync);
             
             if (res.type === 'abort') {
-                alert("Game ID Mismatch! This server is running a different game.");
+                alert("Game ID Mismatch!");
                 return;
-            }
-            if (res.type === 'welcome') {
-                console.log("Joined as Player ID:", res.id);
             }
             
             if (res.tick !== undefined) {
                 const ahead = world.currentTick - res.tick;
                 document.getElementById('netStats').innerText = 
-                    `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}/${world.maxLead}) | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks} | Players: ${Object.keys(world.localState.players).length}`;
+                    `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}) | Status: ${world.localState.status} | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks}`;
             }
-            bombermanRender(ctx, canvas, world.localState, TILE_SIZE);
         }
+
+        function renderLoop() {
+            airhockeyRender(ctx, canvas, world.localState, 0, world.myPlayerId);
+            requestAnimationFrame(renderLoop);
+        }
+        requestAnimationFrame(renderLoop);
 
         function sendInput() {
             if (connection.isOpen() && world.myPlayerId !== null) {
-                // Throttling: If we are too far ahead, skip this prediction tick
                 const serverTick = world.authoritativeState.tick;
                 const lead = world.currentTick - serverTick;
-                
-                if (lead < world.maxLead || isAutoplay) {
-                    let dx = 0, dy = 0, drop = "nil";
-                    if (!isAutoplay) {
-                        if (keys.has('w')) dy = -0.1;
-                        if (keys.has('s')) dy = 0.1;
-                        if (keys.has('a')) dx = -0.1;
-                        if (keys.has('d')) dx = 0.1;
-                        if (keys.has(' ')) { drop = "t"; keys.delete(' '); } 
-                    }
+
+                if (lead < world.maxLead) {
+                    // Convert mouse screen coords to table fixed-point coords
+                    const centerX = canvas.width / 2;
+                    const centerY = canvas.height / 2;
+                    
+                    const margin = 1.1;
+                    const unitsW = (8000 / 1000) * margin;
+                    const unitsH = (12000 / 1000) * margin;
+                    const renderScale = Math.min(canvas.width / unitsW, canvas.height / unitsH);
+
+                    const tx = fpRound(((mouseX - centerX) / renderScale) * 1000);
+                    const ty = fpRound(((mouseY - centerY) / renderScale) * 1000);
                     
                     const nextTick = world.currentTick + 1;
-                    const inputsForTick = {};
-                    if (dx !== 0 || dy !== 0 || drop === "t") {
-                        const input = { dx, dy, 'drop-bomb': drop === "t", t: nextTick };
-                        connection.send(`(:dx ${dx} :dy ${dy} :drop-bomb ${drop} :t ${nextTick})`);
-                        inputsForTick[world.myPlayerId] = input;
-                        if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
-                        world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
-                    }
+                    const input = { tx, ty, t: nextTick };
                     
-                    world.localState = bombermanUpdate(world.localState, inputsForTick);
+                    connection.send(`(:tx ${tx} :ty ${ty} :t ${nextTick})`);
+                    
+                    if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
+                    world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
+                    
+                    const inputsForTick = {};
+                    inputsForTick[world.myPlayerId] = input;
+                    
+                    world.localState = airhockeyUpdate(world.localState, inputsForTick);
                     world.currentTick = nextTick;
                     world.history.set(nextTick, JSON.parse(JSON.stringify(world.localState)));
                 }
 
-                // Send Ping periodically (every 500ms)
                 const now = Date.now();
                 if (now - world.lastPingTime > 500) {
                     const pingId = now;
@@ -94,6 +101,11 @@
             }
             setTimeout(sendInput, 16); 
         }
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
 
         function onOpen() {
             console.log(`${protocol} Open!`);
@@ -125,9 +137,6 @@
             const answer = await response.json();
             await pc.setRemoteDescription(answer);
         }
-
-        window.addEventListener('keydown', (e) => { keys.add(e.key.toLowerCase()); if(e.code === 'Space') keys.add(' '); });
-        window.addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); if(e.code === 'Space') keys.delete(' '); });
 
         if (protocol === 'webrtc') connectWebRTC();
         else connectWS();

@@ -1,10 +1,16 @@
 /**
- * Bomberman-Specific Game Logic
- * Ported from src/bomberman.lisp, src/bombs.lisp
+ * Bomberman-Specific Game Logic (Fixed-Point Port)
  */
 
-const PLAYER_SIZE = 0.7;
-const HALF_SIZE = PLAYER_SIZE / 2.0;
+if (typeof require !== 'undefined') {
+    const fp = require('./fixed-point.js');
+    const physics = require('./physics.js');
+    Object.assign(global, fp);
+    Object.assign(global, physics);
+}
+
+const PLAYER_SIZE = 700;
+const HALF_SIZE = 350;
 const BOMB_TIMER = 180;
 const BOMB_RADIUS = 3;
 const EXPLOSION_DURATION = 30;
@@ -15,12 +21,12 @@ const COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f1c40f", "#9b59b6", "#1abc9c"
  * Returns the tile value at (x, y). Default is 1 (wall) if out of bounds.
  */
 function getTile(level, x, y) {
-    const ix = Math.floor(x + 0.5);
-    const iy = Math.floor(y + 0.5);
+    const ix = Math.floor(fpToFloat(fpAdd(x, 500)));
+    const iy = Math.floor(fpToFloat(fpAdd(y, 500)));
     if (level && iy >= 0 && iy < level.length && ix >= 0 && ix < level[iy].length) {
         return level[iy][ix];
     }
-    return 1; // Default to wall
+    return 1;
 }
 
 /**
@@ -32,8 +38,8 @@ function getOverlappingBombs(x, y, bombs) {
     const offsets = [-h, h];
     for (let ox of offsets) {
         for (let oy of offsets) {
-            const bx = Math.floor((x + ox) + 0.5);
-            const by = Math.floor((y + oy) + 0.5);
+            const bx = Math.floor(fpToFloat(fpAdd(fpAdd(x, ox), 500)));
+            const by = Math.floor(fpToFloat(fpAdd(fpAdd(y, oy), 500)));
             const bid = `${bx},${by}`;
             if (bombs && bombs[bid]) {
                 ids.add(bid);
@@ -44,7 +50,7 @@ function getOverlappingBombs(x, y, bombs) {
 }
 
 /**
- * Check collision with other living players.
+ * Check collision with other living players using shared AABB logic.
  */
 function collidesWithPlayer(x, y, pid, players) {
     if (!players) return false;
@@ -52,7 +58,7 @@ function collidesWithPlayer(x, y, pid, players) {
         if (otherId == pid) continue;
         const other = players[otherId];
         if (other.h <= 0) continue;
-        if (Math.abs(x - other.x) < PLAYER_SIZE && Math.abs(y - other.y) < PLAYER_SIZE) {
+        if (fpAABBOverlapP(x, y, PLAYER_SIZE, PLAYER_SIZE, other.x, other.y, PLAYER_SIZE, PLAYER_SIZE)) {
             return true;
         }
     }
@@ -60,7 +66,7 @@ function collidesWithPlayer(x, y, pid, players) {
 }
 
 /**
- * Full collision check for Bomberman: Tiles, Bombs (unless allowed), and Players.
+ * Full collision check for Bomberman.
  */
 function bombermanCollides(x, y, pid, state, allowedBombIds) {
     const custom = state.customState || {};
@@ -70,11 +76,11 @@ function bombermanCollides(x, y, pid, state, allowedBombIds) {
     const offsets = [[-h, -h], [h, -h], [-h, h], [h, h]];
 
     for (let [ox, oy] of offsets) {
-        const px = x + ox;
-        const py = y + oy;
+        const px = fpAdd(x, ox);
+        const py = fpAdd(y, oy);
         const tile = getTile(level, px, py);
-        const bx = Math.floor(px + 0.5);
-        const by = Math.floor(py + 0.5);
+        const bx = Math.floor(fpToFloat(fpAdd(px, 500)));
+        const by = Math.floor(fpToFloat(fpAdd(py, 500)));
         const bid = `${bx},${by}`;
 
         if (tile !== 0 || (bombs[bid] && !allowedBombIds.has(bid))) {
@@ -85,50 +91,36 @@ function bombermanCollides(x, y, pid, state, allowedBombIds) {
 }
 
 /**
- * Move-and-slide specifically for Bomberman's player movement.
+ * Move-and-slide for Bomberman (Fixed-Point).
  */
 function bombermanMoveAndSlide(pid, player, input, state) {
     if (player.h <= 0) return player;
 
-    const dx = input.dx || 0;
-    const dy = input.dy || 0;
+    const dx = fpFromFloat(input.dx || 0);
+    const dy = fpFromFloat(input.dy || 0);
     const bombs = (state.customState && state.customState.bombs) || {};
     const allowedBombIds = getOverlappingBombs(player.x, player.y, bombs);
 
     let finalX = player.x;
     let finalY = player.y;
 
-    if (!bombermanCollides(player.x + dx, player.y, pid, state, allowedBombIds)) {
-        finalX = player.x + dx;
+    if (!bombermanCollides(fpAdd(player.x, dx), player.y, pid, state, allowedBombIds)) {
+        finalX = fpAdd(player.x, dx);
     }
 
-    if (!bombermanCollides(finalX, player.y + dy, pid, state, allowedBombIds)) {
-        finalY = player.y + dy;
+    if (!bombermanCollides(finalX, fpAdd(player.y, dy), pid, state, allowedBombIds)) {
+        finalY = fpAdd(player.y, dy);
     }
 
     return { ...player, x: finalX, y: finalY };
 }
 
 /**
- * Deterministic PRNG: matches fb-next-rand in Lisp
- */
-function fbNextRand(seed) {
-    const newSeed = (seed * 1103515245 + 12345) % 2147483648;
-    const val = newSeed / 2147483648.0;
-    return [newSeed, val];
-}
-
-function fbRandInt(seed, max) {
-    const [newSeed, val] = fbNextRand(seed);
-    return [newSeed, Math.floor(val * max)];
-}
-
-/**
  * Ported bomb spawning logic
  */
 function spawnBomb(player, customState) {
-    const bx = Math.floor(player.x + 0.5);
-    const by = Math.floor(player.y + 0.5);
+    const bx = Math.floor(fpToFloat(fpAdd(player.x, 500)));
+    const by = Math.floor(fpToFloat(fpAdd(player.y, 500)));
     const bid = `${bx},${by}`;
     
     let bombs = { ...(customState.bombs || {}) };
@@ -139,17 +131,20 @@ function spawnBomb(player, customState) {
 }
 
 /**
- * Ported bomb update logic (simplified timers for prediction)
+ * Ported bomb update logic (Fixed-Point + Explosion Rays)
  */
 function updateBombs(state, inputs) {
     let custom = { ...state.customState };
     let bombs = { ...(custom.bombs || {}) };
+    let explosions = {};
+    let level = [...(custom.level || [])];
+    let players = { ...state.players };
     
     // 1. Process new bomb placements
-    for (let pid in state.players) {
+    for (let pid in players) {
         const input = (inputs && inputs[pid]) || {};
         if (input['drop-bomb']) {
-            custom = spawnBomb(state.players[pid], custom);
+            custom = spawnBomb(players[pid], custom);
             bombs = custom.bombs;
         }
     }
@@ -159,16 +154,60 @@ function updateBombs(state, inputs) {
     for (let bid in bombs) {
         let b = { ...bombs[bid] };
         b.tm -= 1;
-        if (b.tm > 0) {
+        if (b.tm <= 0) {
+            // EXPLODE!
+            explosions[bid] = EXPLOSION_DURATION;
+            const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+            for (let [dx, dy] of dirs) {
+                for (let r = 1; r <= BOMB_RADIUS; r++) {
+                    const ex = b.x + dx * r;
+                    const ey = b.y + dy * r;
+                    const tile = getTile(level, fpFromFloat(ex), fpFromFloat(ey));
+                    const eid = `${ex},${ey}`;
+                    explosions[eid] = EXPLOSION_DURATION;
+                    if (tile === 1 || tile === 2) {
+                        if (tile === 2) {
+                            // Destroy crate
+                            level[ey] = [...level[ey]];
+                            level[ey][ex] = 0;
+                        }
+                        break;
+                    }
+                }
+            }
+        } else {
             nextBombs[bid] = b;
         }
     }
+
+    // 3. Kill players in explosions
+    let nextPlayers = { ...players };
+    for (let eid in explosions) {
+        const [ex, ey] = eid.split(',').map(Number);
+        for (let pid in nextPlayers) {
+            const p = nextPlayers[pid];
+            if (p.h > 0 && 
+                Math.abs(fpFromFloat(ex) - p.x) < 800 && 
+                Math.abs(fpFromFloat(ey) - p.y) < 800) {
+                nextPlayers[pid] = { ...p, h: 0, dt: state.tick };
+            }
+        }
+    }
     
-    return { ...custom, bombs: nextBombs };
+    return { 
+        ...custom, 
+        bombs: nextBombs, 
+        explosions: Object.keys(explosions).map(eid => {
+            const [x, y] = eid.split(',').map(Number);
+            return { x, y };
+        }),
+        level: level,
+        players: nextPlayers
+    };
 }
 
 /**
- * Ported bot logic from bots.lisp
+ * Ported bot logic
  */
 function updateBots(state) {
     const custom = state.customState || {};
@@ -187,18 +226,18 @@ function updateBots(state) {
         let dx = bot.dx;
         let dy = bot.dy;
         
-        let nx = x + dx;
-        let ny = y + dy;
+        let nx = fpAdd(x, dx);
+        let ny = fpAdd(y, dy);
 
         // Simple wall bounce
         if (getTile(level, nx, ny) !== 0) {
             let [newSeed, dir] = fbRandInt(seed, 4);
             seed = newSeed;
             switch(dir) {
-                case 0: dx = 0.025; dy = 0.0; break;
-                case 1: dx = -0.025; dy = 0.0; break;
-                case 2: dx = 0.0; dy = 0.025; break;
-                case 3: dx = 0.0; dy = -0.025; break;
+                case 0: dx = 25; dy = 0; break;
+                case 1: dx = -25; dy = 0; break;
+                case 2: dx = 0; dy = 25; break;
+                case 3: dx = 0; dy = -25; break;
             }
             nx = x; ny = y;
         }
@@ -208,8 +247,8 @@ function updateBots(state) {
         // Kill players
         for (let pid in nextPlayers) {
             const p = nextPlayers[pid];
-            if (p.h > 0 && Math.abs(nx - p.x) < 0.6 && Math.abs(ny - p.y) < 0.6) {
-                nextPlayers[pid] = { ...p, h: 0 };
+            if (p.h > 0 && fpAbs(fpSub(nx, p.x)) < 600 && fpAbs(fpSub(ny, p.y)) < 600) {
+                nextPlayers[pid] = { ...p, h: 0, dt: state.tick };
             }
         }
     }
@@ -221,16 +260,17 @@ function updateBots(state) {
     };
 }
 
-/**
- * Entry point for a single tick of the Bomberman simulation.
- */
 function bombermanUpdate(state, inputs) {
     let nextTick = state.tick + 1;
     
+    // updateBombs now returns updated players too because of explosions
     let customAfterBombs = updateBombs(state, inputs);
-    let stateAfterBombs = { ...state, customState: customAfterBombs };
+    let playersAfterExplosions = customAfterBombs.players;
+    delete customAfterBombs.players;
 
-    let nextPlayers = { ...state.players };
+    let stateAfterBombs = { ...state, players: playersAfterExplosions, customState: customAfterBombs };
+
+    let nextPlayers = { ...stateAfterBombs.players };
     for (let pid in nextPlayers) {
         const input = (inputs && inputs[pid]) || {};
         nextPlayers[pid] = bombermanMoveAndSlide(pid, nextPlayers[pid], input, stateAfterBombs);
@@ -245,70 +285,35 @@ function bombermanUpdate(state, inputs) {
     };
 }
 
-/**
- * Apply delta to a base state.
- */
 function bombermanApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
     newState.tick = delta.t;
-    
-    if (delta.p) {
-        delta.p.forEach(dp => { 
-            newState.players[dp.id] = dp;
-        });
-    }
+    if (delta.p) delta.p.forEach(dp => { newState.players[dp.id] = dp; });
     if (delta.l) newState.customState.level = delta.l;
     if (delta.s !== undefined) newState.customState.seed = delta.s;
-    
     if (delta.b) {
         newState.customState.bombs = {};
         delta.b.forEach(b => { newState.customState.bombs[`${b.x},${b.y}`] = b; });
     }
     newState.customState.explosions = delta.e || [];
-    
     if (delta.bots) {
         newState.customState.bots = {};
         delta.bots.forEach((bot, idx) => { newState.customState.bots[idx] = bot; });
     }
-    
     return newState;
 }
 
-/**
- * Sync entities we don't predict.
- */
 function bombermanSync(localState, serverState, myPlayerId) {
     for (let id in serverState.players) {
-        if (id != myPlayerId) {
-            localState.players[id] = serverState.players[id];
-        } else if (localState.players[id]) {
-            localState.players[id].h = serverState.players[id].h;
-        } else {
-            localState.players[id] = serverState.players[id];
-        }
+        if (id != myPlayerId) localState.players[id] = serverState.players[id];
+        else if (localState.players[id]) localState.players[id].h = serverState.players[id].h;
+        else localState.players[id] = serverState.players[id];
     }
     localState.customState.explosions = serverState.customState.explosions;
-    if (serverState.customState.level.length > 0) {
-        localState.customState.level = serverState.customState.level;
-    }
+    if (serverState.customState.level.length > 0) localState.customState.level = serverState.customState.level;
     localState.customState.bots = serverState.customState.bots;
-
-    // --- Intelligent Bomb Sync ---
-    const serverBombs = serverState.customState.bombs || {};
-    const localBombs = localState.customState.bombs || {};
-    const mergedBombs = { ...serverBombs };
-
-    for (let bid in localBombs) {
-        if (!mergedBombs[bid] && localBombs[bid].tm > 170) {
-            mergedBombs[bid] = localBombs[bid];
-        }
-    }
-    localState.customState.bombs = mergedBombs;
 }
 
-/**
- * Render the game to a canvas.
- */
 function bombermanRender(ctx, canvas, localState, TILE_SIZE) {
     const custom = localState.customState;
     if (!custom || !custom.level || custom.level.length === 0) return;
@@ -350,27 +355,20 @@ function bombermanRender(ctx, canvas, localState, TILE_SIZE) {
     const bots = custom.bots || {};
     Object.values(bots).forEach(bot => {
         ctx.fillStyle = "#ff00ff"; 
-        ctx.fillRect(bot.x * TILE_SIZE + 4, bot.y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+        ctx.fillRect(fpToFloat(bot.x) * TILE_SIZE + 4, fpToFloat(bot.y) * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
     });
 
     Object.values(localState.players).forEach(p => {
         const isDead = p.h <= 0;
         ctx.fillStyle = isDead ? "#555" : COLORS[p.id % COLORS.length];
-        ctx.fillRect(p.x * TILE_SIZE + 2, p.y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+        ctx.fillRect(fpToFloat(p.x) * TILE_SIZE + 2, fpToFloat(p.y) * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
         if (isDead) {
-            ctx.fillStyle = "#fff";
-            ctx.font = "10px Arial";
-            ctx.fillText("X", p.x * TILE_SIZE + 6, p.y * TILE_SIZE + 14);
+            ctx.fillStyle = "#fff"; ctx.font = "10px Arial";
+            ctx.fillText("X", fpToFloat(p.x) * TILE_SIZE + 6, fpToFloat(p.y) * TILE_SIZE + 14);
         }
     });
 }
 
-// Support Node.js/CommonJS environment for testing
 if (typeof module !== 'undefined') {
-    module.exports = {
-        bombermanUpdate,
-        bombermanApplyDelta,
-        bombermanSync,
-        bombermanRender
-    };
+    module.exports = { bombermanUpdate, bombermanApplyDelta, bombermanSync, bombermanRender };
 }

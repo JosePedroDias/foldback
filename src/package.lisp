@@ -39,4 +39,27 @@
            #:make-sumo-player
            #:sumo-join
            #:sumo-update
-           #:sumo-serialize))
+           #:sumo-serialize
+           
+           ;; Fixed-Point Math
+           #:fp-round
+           #:fp-from-float
+           #:fp-to-float
+           #:fp-add
+           #:fp-sub
+           #:fp-mul
+           #:fp-div
+           #:fp-sqrt
+           #:fp-dist-sq
+           #:fp-dot
+           
+           ;; Physics & Collision
+           #:fp-circles-overlap-p
+           #:fp-push-circles
+           #:fp-closest-point-on-segment
+           #:fp-aabb-overlap-p
+           
+           ;; Air Hockey Game Logic
+           #:airhockey-join
+           #:airhockey-update
+           #:airhockey-serialize))
