@@ -4,6 +4,7 @@
 (defparameter +player-size+ 700) 
 (defparameter +half-size+ 350)
 (defparameter +respawn-timeout+ 300) ; 5 seconds at 60Hz
+(defparameter +bomb-range+ 3)
 
 ;; --- Level & Map Logic ---
 
@@ -119,7 +120,7 @@
               (setf explosions (fset:with explosions (cl:format nil "~A,~A" bx by) 30))
               ;; Ray-casting explosion in cardinal directions
               (loop for (dx dy) in '((1 0) (-1 0) (0 1) (0 -1))
-                    do (loop for r from 1 to 3
+                    do (loop for r from 1 to +bomb-range+
                              for ex = (+ bx (* dx r))
                              for ey = (+ by (* dy r))
                              for tile = (get-tile level (fp-from-float (cl:float ex)) (fp-from-float (cl:float ey)))
@@ -131,8 +132,9 @@
                                     (return))))) ;; Stop ray at wall/crate
             (setf next-bombs (fset:with next-bombs bid (fset:with b :tm tm))))))
 
-    ;; 3. Kill players in explosions
-    (let ((final-players players))
+    ;; 3. Kill players (and bots) in explosions
+    (let ((final-players players)
+          (next-bots (or (fset:lookup custom :bots) (fset:map))))
       (fset:do-map (eid time explosions)
         (declare (ignore time))
         (let* ((coords (uiop:split-string eid :separator ","))
@@ -144,11 +146,17 @@
                        (< (fp-abs (fp-sub (fp-from-float (cl:float ey)) (fset:lookup p :y))) 800))
               (let ((dead-p (fset:with p :health 0)))
                 (setf dead-p (fset:with dead-p :death-tick (fset:lookup state :tick)))
-                (setf final-players (fset:with final-players pid dead-p)))))))
+                (setf final-players (fset:with final-players pid dead-p)))))
+          
+          (fset:do-map (bid b next-bots)
+            (when (and (< (fp-abs (fp-sub (fp-from-float (cl:float ex)) (fset:lookup b :x))) 800)
+                       (< (fp-abs (fp-sub (fp-from-float (cl:float ey)) (fset:lookup b :y))) 800))
+              (setf next-bots (fset:less next-bots bid))))))
       
       (let* ((final-custom (fset:with custom :bombs next-bombs))
              (final-custom (fset:with final-custom :explosions explosions))
-             (final-custom (fset:with final-custom :level level)))
+             (final-custom (fset:with final-custom :level level))
+             (final-custom (fset:with final-custom :bots next-bots)))
         (fset:with (fset:with state :custom-state final-custom) :players final-players)))))
 
 ;; --- Bot Logic ---

@@ -141,10 +141,14 @@
                            (last-s (fset:lookup last-client-states p-id))
                            (msg   (funcall serialization-fn new-state last-s)))
                       (when (and msg (> (length msg) 0))
-                        (setf last-client-states (fset:with last-client-states p-id new-state))
                         (incf (metrics-bytes-sent *current-metrics*) (length msg))
                         (ignore-errors
                           (usocket:socket-send socket msg (length msg) :host host :port port)))))
+                  
+                  (fset:do-map (client-key p-id clients)
+                    (declare (ignore client-key))
+                    (setf last-client-states (fset:with last-client-states p-id new-state)))
+
                   (incf (metrics-network-time *current-metrics*) (- (get-internal-real-time) net-start)))
                 
                 (incf (metrics-tick-count *current-metrics*))

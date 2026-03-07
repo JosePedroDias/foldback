@@ -40,7 +40,6 @@
          (s0 (initial-state :custom-state (fset:map (:level level))))
          (s1 (fset:with s0 :players (fset:map (0 p1))))
          ;; Drop bomb at (2, 2)
-         ;; We manually place a bomb at (2, 2)
          (custom (fset:lookup s1 :custom-state))
          (bomb (fset:map (:x 2) (:y 2) (:tm 1)))
          (s-ready (fset:with s1 :custom-state (fset:with custom :bombs (fset:map ("2,2" bomb)))))
@@ -54,6 +53,28 @@
     ;; Distance is exactly 3 tiles. It should hit.
     (assert (<= (fset:lookup p-after :health) 0)))
   (format t "PASS: Radius 3 hit kills.~%"))
+
+(defun test-bomb-radius-limit ()
+  (format t "~%--- Testing bomb radius limit (distance 4) ---~%")
+  (let* ((level (make-level 10 10))
+         ;; Player at (2, 6)
+         (p1 (make-player :x 2000 :y 6000))
+         (s0 (initial-state :custom-state (fset:map (:level level))))
+         (s1 (fset:with s0 :players (fset:map (0 p1))))
+         ;; Drop bomb at (2, 2)
+         (custom (fset:lookup s1 :custom-state))
+         (bomb (fset:map (:x 2) (:y 2) (:tm 1)))
+         (s-ready (fset:with s1 :custom-state (fset:with custom :bombs (fset:map ("2,2" bomb)))))
+         
+         ;; Explode
+         (s-after (update-bombs s-ready (fset:map)))
+         (p-after (fset:lookup (fset:lookup s-after :players) 0)))
+    
+    (format t "Bomb at (2,2), Player at (2,6). Dist = 4 tiles.~%")
+    (format t "Final health: ~A~%" (fset:lookup p-after :health))
+    ;; Distance is 4 tiles. Range is 3. It should NOT hit.
+    (assert (> (fset:lookup p-after :health) 0)))
+  (format t "PASS: Distance 4 is safe.~%"))
 
 (defun test-bomb-radius-blocked ()
   (format t "~%--- Testing bomb radius blocked by wall ---~%")
@@ -79,11 +100,40 @@
     (assert (> (fset:lookup p-after :health) 0)))
   (format t "PASS: Wall blocks explosion.~%"))
 
+(defun test-bomb-kills-bot ()
+  (format t "~%--- Testing bomb kills bot ---~%")
+  (let* ((level (make-level 10 10))
+         ;; Bot at (2, 3)
+         (bot (fset:map (:x 2000) (:y 3000) (:dx 0) (:dy 0)))
+         (s0 (initial-state :custom-state (fset:map (:level level) (:bots (fset:map (0 bot))))))
+         
+         ;; Bomb at (2, 2)
+         (custom (fset:lookup s0 :custom-state))
+         (bomb (fset:map (:x 2) (:y 2) (:tm 1)))
+         (s-ready (fset:with s0 :custom-state (fset:with custom :bombs (fset:map ("2,2" bomb)))))
+         
+         ;; Explode
+         (s-after (update-bombs s-ready (fset:map)))
+         (custom-after (fset:lookup s-after :custom-state))
+         (bots-after (fset:lookup custom-after :bots))
+         (bot-after (fset:lookup bots-after 0)))
+    
+    (format t "Bomb at (2,2), Bot at (2,3).~%")
+    (if bot-after
+        (format t "Bot still exists! Health/State: ~A~%" bot-after)
+        (format t "Bot removed/killed.~%"))
+    
+    ;; Currently this is expected to fail if the bug exists (bot not killed)
+    (assert (null bot-after)))
+  (format t "PASS: Bomb kills bot.~%"))
+
 (handler-case
     (progn
       (test-bomb-hit-player-direct)
       (test-bomb-radius-3)
+      (test-bomb-radius-limit)
       (test-bomb-radius-blocked)
+      (test-bomb-kills-bot)
       (format t "~%All bomb mechanics tests passed!~%"))
   (error (c)
     (format t "~%Test failed: ~A~%" c)

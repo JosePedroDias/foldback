@@ -309,6 +309,7 @@ function bombermanSync(localState, serverState, myPlayerId) {
         else if (localState.players[id]) localState.players[id].h = serverState.players[id].h;
         else localState.players[id] = serverState.players[id];
     }
+    localState.customState.bombs = serverState.customState.bombs;
     localState.customState.explosions = serverState.customState.explosions;
     if (serverState.customState.level.length > 0) localState.customState.level = serverState.customState.level;
     localState.customState.bots = serverState.customState.bots;
