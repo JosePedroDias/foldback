@@ -20,7 +20,7 @@ Traditional game networking engines (like Netick, Mirror, or Photon) require com
 
 ## 🏗️ Architecture: Engine vs. Game Logic
 
-The project is structured to separate the generic **FoldBack Engine** from the specific **Bomberman Game Logic**. This makes the engine reusable for other game types (e.g., shooters, RTS, racing).
+The project is structured to separate the generic **FoldBack Engine** from the specific **Game Logic**. This makes the engine reusable for any type of game (e.g., arcade, action, racing).
 
 ### 1. The Generic Engine (`foldback`)
 The core engine provides the "shell" for state management and networking without knowing the specific rules of the game.
@@ -28,12 +28,11 @@ The core engine provides the "shell" for state management and networking without
 *   **`src/state.lisp`**: The `world` struct which manages a history of immutable snapshots (`fset:map`) and an input buffer.
 *   **`src/server.lisp`**: A generic UDP server that handles client connections, heartbeats, and high-frequency broadcasts using a pluggable `serialization-fn`.
 
-### 2. Bomberman Specialization
-The Bomberman logic is encapsulated in its own layer, making it easy to identify and potentially port to other languages (like JavaScript for Client-Side Prediction).
-*   **`src/bomberman.lisp`**: The "Glue" file. It defines `bomberman-update` and `bomberman-serialize`, which are passed into the engine.
-*   **`src/bombs.lisp`**: Logic for bomb timers, chain reactions, and explosion rays.
-*   **`src/bots.lisp`**: Sentry bot movement and player-kill logic.
-*   **`src/map.lisp`**: Procedural generation of the tile-based arena.
+### 2. Example Games
+FoldBack includes several example games that demonstrate different types of physics and interaction patterns:
+- **Bomberman (`src/bomberman.lisp`)**: Grid-based movement, tile collision, bot AI, and infinite-ray explosion logic.
+- **Sumo (`src/sumo.lisp`)**: Continuous physics (acceleration/friction) and circle-to-circle collision response.
+- **Air Hockey (`src/airhockey.lisp`)**: 1:1 positional tracking (paddle follow) and high-speed puck bounces against circular and linear boundaries.
 
 ---
 
@@ -53,9 +52,9 @@ Because the simulation function is **Pure** (no side effects), we can re-simulat
 ---
 
 ## 🧪 Porting for Client-Side Prediction (CSP)
-Because the Bomberman logic in `src/bomberman.lisp` and `src/bombs.lisp` is written using **pure functions** and **deterministic grid-based physics**, it is trivial to port to JavaScript/TypeScript. 
+Because the game logic is written using **pure functions** and **deterministic fixed-point physics**, it is trivial to port to JavaScript. 
 
-A client (e.g., a React or Three.js app) can run the exact same `bomberman-update` logic locally to predict movement, then use the engine's `rollback-and-resimulate` pattern to reconcile with the server's authoritative state updates.
+A client can run the exact same `update` logic locally to predict movement, then use the engine's `rollback-and-resimulate` pattern to reconcile with the server's authoritative state updates. Ports for all three games are included in `gateway/*.js`.
 
 ---
 
@@ -64,8 +63,8 @@ A client (e.g., a React or Three.js app) can run the exact same `bomberman-updat
 2.  **Quickstart:**
     ```bash
     make setup
-    # terminal 1 (starts the Lisp server with Bomberman logic)
-    make lisp
+    # terminal 1 (starts the Lisp server - choose one game)
+    make lisp-bomberman # OR lisp-sumo OR lisp-airhockey
     # terminal 2 (starts the WebRTC/UDP gateway)
     make gateway
     ```

@@ -86,30 +86,38 @@ You must check collisions separately for X and Y axes to allow "sliding" along w
 **Lisp:**
 ```lisp
 (defun bomberman-move-and-slide (pid player input state)
-  (let ((x (lookup player :x))
-        (y (lookup player :y))
-        (dx (or (lookup input :dx) 0.0))
-        (dy (or (lookup input :dy) 0.0)))
+  (let* ((x (fset:lookup player :x))
+         (y (fset:lookup player :y))
+         (dx (fp-from-float (or (fset:lookup input :dx) 0.0)))
+         (dy (fp-from-float (or (fset:lookup input :dy) 0.0)))
+         (final-x x)
+         (final-y y))
     ;; Separate X movement check
-    (unless (collides? (+ x dx) y pid state)
-      (setf x (+ x dx)))
+    (unless (bomberman-collides? (fp-add x dx) y pid state allowed-bomb-ids)
+      (setf final-x (fp-add x dx)))
     ;; Separate Y movement check
-    (unless (collides? x (+ y dy) pid state)
-      (setf y (+ y dy)))
+    (unless (bomberman-collides? final-x (fp-add y dy) pid state allowed-bomb-ids)
+      (setf final-y (fp-add y dy)))
     ;; Return NEW immutable player map
-    (with (with player :x x) :y y)))
+    (fset:with (fset:with player :x final-x) :y final-y)))
 ```
 
 **JS Port:**
 ```javascript
 function bombermanMoveAndSlide(pid, player, input, state) {
-    let x = player.x, y = player.y;
-    let dx = input.dx || 0, dy = input.dy || 0;
-    
-    if (!bombermanCollides(x + dx, y, pid, state)) x += dx;
-    if (!bombermanCollides(x, y + dy, pid, state)) y += dy;
-    
-    return { ...player, x, y }; // Return NEW immutable object
+    const dx = fpFromFloat(input.dx || 0);
+    const dy = fpFromFloat(input.dy || 0);
+    let finalX = player.x;
+    let finalY = player.y;
+
+    if (!bombermanCollides(fpAdd(player.x, dx), player.y, pid, state, allowedBombIds)) {
+        finalX = fpAdd(player.x, dx);
+    }
+    if (!bombermanCollides(finalX, fpAdd(player.y, dy), pid, state, allowedBombIds)) {
+        finalY = fpAdd(player.y, dy);
+    }
+
+    return { ...player, x: finalX, y: finalY };
 }
 ```
 
@@ -118,24 +126,28 @@ Players are at continuous coordinates (e.g., 1.2, 4.7), but bombs live on a disc
 
 **Lisp:**
 ```lisp
-(defun spawn-bomb (player custom-state)
-  (let* ((bx (floor (+ (lookup player :x) 0.5))) ;; Round to nearest tile
-         (by (floor (+ (lookup player :y) 0.5)))
-         (bid (format nil "~A,~A" bx by)))
-    ;; Add to the immutable bombs map
-    (with custom-state :bombs 
-          (with (lookup custom-state :bombs) bid (make-bomb bx by)))))
+(defun bomberman-spawn-bomb (player custom-state)
+  (let* ((bx (cl:floor (fp-to-float (fp-add (fset:lookup player :x) 500))))
+         (by (cl:floor (fp-to-float (fp-add (fset:lookup player :y) 500))))
+         (bid (cl:format nil "~A,~A" bx by))
+         (bombs (or (fset:lookup custom-state :bombs) (fset:map))))
+    (if (not (fset:lookup bombs bid))
+        (let ((new-bomb (fset:map (:x bx) (:y by) (:tm 180))))
+          (fset:with custom-state :bombs (fset:with bombs bid new-bomb)))
+        custom-state)))
 ```
 
 **JS Port:**
 ```javascript
 function spawnBomb(player, customState) {
-    const bx = Math.floor(player.x + 0.5);
-    const by = Math.floor(player.y + 0.5);
+    const bx = Math.floor(fpToFloat(fpAdd(player.x, 500)));
+    const by = Math.floor(fpToFloat(fpAdd(player.y, 500)));
     const bid = `${bx},${by}`;
     
-    let bombs = { ...customState.bombs };
-    if (!bombs[bid]) bombs[bid] = { x: bx, y: by, tm: 180 };
+    let bombs = { ...(customState.bombs || {}) };
+    if (!bombs[bid]) {
+        bombs[bid] = { x: bx, y: by, tm: 180 };
+    }
     return { ...customState, bombs };
 }
 ```
@@ -217,8 +229,9 @@ Interpolation adds delay. If you interpolate your own character, your inputs wil
 *   **Gotcha**: When the server sends a JSON delta, IDs might arrive as strings `"0"` while your local code uses numbers `0`. Always cast to string: `nextPlayers[String(pid)]`.
 
 ### 3. Floating Point Drift
-*   **The Problem**: Lisp on Linux and JS on Chrome might calculate `0.1 + 0.2` slightly differently at the 15th decimal place.
-*   **The Solution**: In your reconciliation check, never use `if (pos == authoritativePos)`. Always use an epsilon: 
+*   **The Problem**: Lisp on Linux and JS on Chrome might calculate floating-point operations slightly differently, causing instant desync.
+*   **The Primary Solution**: Use **Fixed-Point Mathematics** (`src/fixed-point.lisp` and `gateway/fixed-point.js`) for all gameplay-affecting calculations (positions, velocities, distances). We use a 1000x scale.
+*   **The Secondary Solution**: In your reconciliation check, never use strict equality. Always use an epsilon threshold:
     ```javascript
     if (Math.abs(predicted - authoritative) > 0.01) { triggerRollback(); }
     ```
