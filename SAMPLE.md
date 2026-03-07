@@ -25,15 +25,14 @@ The engine is split into three main layers:
 
 The Go gateway serves the frontend and provides two connection methods:
 
-1.  **WebSockets (Default):** 
-    *   Fastest connection time.
-    *   Highly compatible with standard web infrastructure.
-    *   Accessed via `http://localhost:8080`
-2.  **WebRTC (DataChannels):** 
+1.  **WebRTC (DataChannels - Default):**
     *   UDP-based peer-to-peer style communication.
     *   Lower overhead for high-frequency input.
-    *   Accessed via `http://localhost:8080?protocol=webrtc`
-
+    *   Accessed via `http://localhost:8080` (or `?protocol=webrtc`)
+2.  **WebSockets:**
+    *   Fastest connection time.
+    *   Highly compatible with standard web infrastructure.
+    *   Accessed via `http://localhost:8080?protocol=websockets`
 ## 🛠 Developer Tooling
 
 -   **Autoplay Mode:** Test server load and bot behavior by appending `?autoplay=1` to the URL.

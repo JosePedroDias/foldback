@@ -1,8 +1,13 @@
-.PHONY: all lisp lisp-bomberman lisp-sumo gateway test clean setup test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit benchmark check-lisp
+.PHONY: all lisp lisp-bomberman lisp-sumo lisp-airhockey lisp-jumpnbump gateway test clean setup test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit test-airhockey-cross test-jnb-cross benchmark check-lisp
 
 all: lisp gateway
 
 lisp: lisp-bomberman
+
+lisp-jumpnbump:
+	sbcl --load foldback.asd \
+		 --eval "(ql:quickload :foldback)" \
+		 --eval "(foldback:start-server :game-id \"jumpnbump\" :simulation-fn #'foldback:jnb-update :serialization-fn #'foldback:jnb-serialize :join-fn #'foldback:jnb-join :initial-custom-state (fset:map (:seed 123)))"
 
 lisp-bomberman:
 	sbcl --load foldback.asd \
@@ -28,7 +33,7 @@ check-lisp:
 gateway:
 	cd gateway && go run main.go
 
-test: test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit test-airhockey-cross
+test: test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit test-airhockey-cross test-jnb-cross
 
 test-lisp:
 	sbcl --non-interactive \
@@ -84,3 +89,12 @@ benchmark:
 setup:
 	sbcl --eval "(ql:quickload :fset)" --eval "(ql:quickload :usocket)" --quit
 	cd gateway && go mod download
+
+test-jnb-cross:
+	@echo "--- Running Jump and Bump Cross-Platform Tests (JS) ---"
+	node tests/jumpnbump-cross-test.js
+	@echo "\n--- Running Jump and Bump Cross-Platform Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/jumpnbump-cross-test.lisp

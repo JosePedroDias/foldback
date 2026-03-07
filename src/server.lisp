@@ -34,6 +34,7 @@
          (tick-rate (/ 1.0 60.0)))
     (setf *current-metrics* (make-metrics))
     (cl:format t "FoldBack Engine Started [Game: ~A] on port ~A~%" game-id port)
+    (finish-output)
     
     (unwind-protect
          (loop
@@ -59,6 +60,7 @@
                                (setf player-id pid)
                                (incf *next-player-id*)
                                (cl:format t "New Client: ~A as PID ~A (Game: ~A)~%" client-key pid game-id)
+                               (finish-output)
                                (setf clients (fset:with clients client-key pid))
                                
                                (let ((welcome (cl:format nil "{\"your_id\":~A,\"game_id\":\"~A\"}" pid game-id)))

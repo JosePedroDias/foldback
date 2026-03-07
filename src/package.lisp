@@ -62,4 +62,9 @@
            ;; Air Hockey Game Logic
            #:airhockey-join
            #:airhockey-update
-           #:airhockey-serialize))
+           #:airhockey-serialize
+           
+           ;; Jump and Bump Game Logic
+           #:jnb-join
+           #:jnb-update
+           #:jnb-serialize))

@@ -30,9 +30,10 @@ The core engine provides the "shell" for state management and networking without
 
 ### 2. Example Games
 FoldBack includes several example games that demonstrate different types of physics and interaction patterns:
-- **Bomberman (`src/bomberman.lisp`)**: Grid-based movement, tile collision, bot AI, and infinite-ray explosion logic.
-- **Sumo (`src/sumo.lisp`)**: Continuous physics (acceleration/friction) and circle-to-circle collision response.
-- **Air Hockey (`src/airhockey.lisp`)**: 1:1 positional tracking (paddle follow) and high-speed puck bounces against circular and linear boundaries.
+- **Bomberman ([GDD](BOMBERMAN_GDD.md) | `src/bomberman.lisp`)**: Grid-based movement, tile collision, bot AI, and infinite-ray explosion logic.
+- **Sumo ([GDD](SUMO_GDD.md) | `src/sumo.lisp`)**: Continuous physics (acceleration/friction) and circle-to-circle collision response.
+- **Air Hockey ([GDD](AIRHOCKEY_GDD.md) | `src/airhockey.lisp`)**: 1:1 positional tracking (paddle follow) and high-speed puck bounces against circular and linear boundaries.
+- **Jump and Bump ([GDD](JUMPNBUMP_GDD.md) | `src/jumpnbump.lisp`)**: Side-scrolling platformer physics with gravity, horizontal inertia, and "squish" collision logic (jumping on heads).
 
 ---
 

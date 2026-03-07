@@ -26,7 +26,7 @@
         
         const urlParams = new URLSearchParams(window.location.search);
         const isAutoplay = urlParams.get('autoplay') === '1';
-        const protocol = urlParams.get('protocol') || 'websockets';
+        const protocol = urlParams.get('protocol') || 'webrtc';
         if (isAutoplay) document.getElementById('autoplayMode').style.display = 'block';
 
         const world = new FoldBackWorld("bomberman");

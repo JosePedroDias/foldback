@@ -29,7 +29,7 @@
         resize();
 
         const urlParams = new URLSearchParams(window.location.search);
-        const protocol = urlParams.get('protocol') || 'websockets';
+        const protocol = urlParams.get('protocol') || 'webrtc';
 
         const world = new FoldBackWorld("airhockey");
         world.reconciliationThresholdSq = 1; // Any integer difference in FP triggers rollback

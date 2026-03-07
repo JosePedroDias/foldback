@@ -14,5 +14,6 @@
                  (:file "bomberman")
                  (:file "sumo")
                  (:file "airhockey")
+                 (:file "jumpnbump")
                  (:file "engine")
                  (:file "server")))))

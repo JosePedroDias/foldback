@@ -116,7 +116,7 @@ function processServerMessage(world, data, simulationFn, applyDeltaFn, syncFn) {
             }
             
             if (mispredicted) {
-                console.warn(`DETECTION_MISPREDICTION at tick ${serverTick}!`);
+                // console.warn(`DETECTION_MISPREDICTION at tick ${serverTick}!`);
                 world.totalRollbacks++;
                 // 1. Set the foundation to the authoritative truth
                 world.history.set(serverTick, JSON.parse(JSON.stringify(world.authoritativeState)));

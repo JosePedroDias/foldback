@@ -72,7 +72,8 @@ function fpLength(x, y) {
  * Deterministic PRNG: matches fb-next-rand in Lisp (src/utils.lisp)
  */
 function fbNextRand(seed) {
-    const newSeed = (seed * 1103515245 + 12345) % 2147483648;
+    const s = BigInt(seed);
+    const newSeed = Number((s * 1103515245n + 12345n) % 2147483648n);
     const val = newSeed / 2147483648.0;
     return [newSeed, val];
 }
