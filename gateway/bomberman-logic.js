@@ -260,12 +260,16 @@ function bombermanApplyDelta(baseState, delta) {
     if (delta.l) newState.customState.level = delta.l;
     if (delta.s !== undefined) newState.customState.seed = delta.s;
     
-    newState.customState.bombs = {};
     if (delta.b) {
+        newState.customState.bombs = {};
         delta.b.forEach(b => { newState.customState.bombs[`${b.x},${b.y}`] = b; });
     }
     newState.customState.explosions = delta.e || [];
-    newState.customState.bots = delta.bots || [];
+    
+    if (delta.bots) {
+        newState.customState.bots = {};
+        delta.bots.forEach((bot, idx) => { newState.customState.bots[idx] = bot; });
+    }
     
     return newState;
 }
@@ -288,6 +292,18 @@ function bombermanSync(localState, serverState, myPlayerId) {
         localState.customState.level = serverState.customState.level;
     }
     localState.customState.bots = serverState.customState.bots;
+
+    // --- Intelligent Bomb Sync ---
+    const serverBombs = serverState.customState.bombs || {};
+    const localBombs = localState.customState.bombs || {};
+    const mergedBombs = { ...serverBombs };
+
+    for (let bid in localBombs) {
+        if (!mergedBombs[bid] && localBombs[bid].tm > 170) {
+            mergedBombs[bid] = localBombs[bid];
+        }
+    }
+    localState.customState.bombs = mergedBombs;
 }
 
 /**
@@ -331,8 +347,9 @@ function bombermanRender(ctx, canvas, localState, TILE_SIZE) {
         ctx.fillRect(bomb.x * TILE_SIZE + 4, bomb.y * TILE_SIZE + 4, (bomb.tm/180)*(TILE_SIZE-8), 2);
     });
 
-    ctx.fillStyle = "#ff00ff"; 
-    (custom.bots || []).forEach(bot => {
+    const bots = custom.bots || {};
+    Object.values(bots).forEach(bot => {
+        ctx.fillStyle = "#ff00ff"; 
         ctx.fillRect(bot.x * TILE_SIZE + 4, bot.y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
     });
 

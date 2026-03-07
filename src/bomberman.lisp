@@ -24,6 +24,13 @@
           do (setf m (with m y row)))
     m))
 
+(defun bomberman-join (player-id state)
+  "Initialize a new Bomberman player at a random spawn point."
+  (let* ((cs (lookup state :custom-state))
+         (level (lookup cs :level))
+         (spawn (foldback:find-random-spawn level state)))
+    (make-player :x (lookup spawn :x) :y (lookup spawn :y))))
+
 ;; --- Bomberman Physics & Collisions ---
 
 (defun get-tile (level x y)
@@ -108,6 +115,8 @@
 (defun bomberman-update (state inputs)
   "The full Bomberman simulation step."
   (let ((actual-inputs (or inputs (fset:map))))
+    (when (not (fset:empty? actual-inputs))
+      (format t "SIM: Tick ~A | Inputs: ~A~%" (lookup state :tick) actual-inputs))
     (let* ((players (lookup state :players))
            (tick    (lookup state :tick))
            (inputs  actual-inputs)

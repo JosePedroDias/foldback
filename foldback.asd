@@ -14,5 +14,6 @@
                  (:file "bombs")
                  (:file "bots")
                  (:file "bomberman")
+                 (:file "sumo")
                  (:file "engine")
                  (:file "server")))))

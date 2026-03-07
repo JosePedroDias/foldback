@@ -1,11 +1,18 @@
-.PHONY: all lisp gateway test clean setup test-lisp test-gateway test-cross benchmark check-lisp
+.PHONY: all lisp lisp-bomberman lisp-sumo gateway test clean setup test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit benchmark check-lisp
 
 all: lisp gateway
 
-lisp:
+lisp: lisp-bomberman
+
+lisp-bomberman:
 	sbcl --load foldback.asd \
 		 --eval "(ql:quickload :foldback)" \
-		 --eval "(let* ((level (foldback:make-bomberman-map)) (bots (foldback:spawn-bots level 3))) (foldback:start-server :initial-custom-state (fset:map (:level level) (:bots bots) (:seed 123))))"
+		 --eval "(let* ((level (foldback:make-bomberman-map)) (bots (foldback:spawn-bots level 3))) (foldback:start-server :game-id \"bomberman\" :simulation-fn #'foldback:bomberman-update :serialization-fn #'foldback:bomberman-serialize :join-fn #'foldback:bomberman-join :initial-custom-state (fset:map (:level level) (:bots bots) (:seed 123))))"
+
+lisp-sumo:
+	sbcl --load foldback.asd \
+		 --eval "(ql:quickload :foldback)" \
+		 --eval "(foldback:start-server :game-id \"sumo\" :simulation-fn #'foldback:sumo-update :serialization-fn #'foldback:sumo-serialize :join-fn #'foldback:sumo-join)"
 
 check-lisp:
 	sbcl --non-interactive \
@@ -16,7 +23,7 @@ check-lisp:
 gateway:
 	cd gateway && go run main.go
 
-test: test-lisp test-gateway test-cross
+test: test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit
 
 test-lisp:
 	sbcl --non-interactive \
@@ -31,13 +38,29 @@ test-gateway:
 	cd gateway && go test -v ./...
 
 test-cross:
-	@echo "--- Running Cross-Platform Logic Sync Tests (JS) ---"
+	@echo "--- Running Bomberman Cross-Platform Tests ---"
 	node tests/cross-platform-test.js
-	@echo "\n--- Running Cross-Platform Logic Sync Tests (Lisp) ---"
+	@echo "\n--- Running Bomberman Cross-Platform Tests (Lisp) ---"
 	sbcl --non-interactive \
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/cross-platform-test.lisp
+
+test-sumo-cross:
+	@echo "--- Running Sumo Cross-Platform Tests (JS) ---"
+	node tests/sumo-cross-test.js
+	@echo "\n--- Running Sumo Cross-Platform Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/sumo-cross-test.lisp
+
+test-sumo-unit:
+	@echo "--- Running Sumo Core Unit Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/sumo-unit-tests.lisp
 
 benchmark:
 	sbcl --non-interactive \

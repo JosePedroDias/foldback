@@ -36,7 +36,7 @@
          (level (make-level 5 5))
          (state (initial-state :custom-state (map (:level level))))
          (after-spawn (spawn-bomb 0 p (lookup state :custom-state) 10))
-         (bombs (lookup after-spawn :bombs)))
+         (bombs (or (lookup after-spawn :bombs) (map))))
     (assert-eq (fset:size bombs) 1 "Bomb spawned")
     (assert-eq (fset:domain bombs) (fset:set "2,2") "Bomb key check"))
 
@@ -50,7 +50,7 @@
                   (explode-single-bomb "2,2" bomb level (map) (map) 100 
                                        (map (:level level) (:bots bots) (:explosions (map)))))))
     (let* ((new-custom (fourth result))
-           (new-bots (lookup new-custom :bots)))
+           (new-bots (or (lookup new-custom :bots) (map))))
       (assert-eq (fset:size new-bots) 0 "Bot in ray radius is removed")))
 
   ;; 4. Test Non-Stuck Spawn

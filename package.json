@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "playwright test",
-    "test:multiplayer": "playwright test tests/multiplayer.spec.ts"
+    "test:multiplayer": "playwright test tests/bomberman-multiplayer.spec.ts"
   },
   "keywords": [],
   "author": "",

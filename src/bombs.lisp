@@ -6,7 +6,7 @@
 
 (defun spawn-bomb (player-id player custom-state current-tick)
   "Create a bomb at the player's rounded grid position."
-  (let* ((bombs (lookup custom-state :bombs))
+  (let* ((bombs (or (lookup custom-state :bombs) (map)))
          (bx (floor (+ (lookup player :x) 0.5)))
          (by (floor (+ (lookup player :y) 0.5)))
          (bomb-id (format nil "~A,~A" bx by)))
@@ -21,7 +21,7 @@
 
 (defun add-explosion (custom-state x y)
   "Record an explosion tile in custom-state."
-  (let* ((explosions (lookup custom-state :explosions))
+  (let* ((explosions (or (lookup custom-state :explosions) (map)))
          (key (format nil "~A,~A" x y)))
     (with custom-state :explosions (with explosions key +explosion-duration+))))
 
@@ -29,11 +29,11 @@
   "Calculates a single explosion and returns (new-level new-players triggered-bomb-ids new-custom-state)."
   (let* ((bx (lookup bomb :x))
          (by (lookup bomb :y))
-         (new-players current-players)
+         (new-players (or current-players (map)))
          (new-level current-level)
          (triggered-bombs nil)
          (new-custom custom-state)
-         (new-bots (lookup custom-state :bots))
+         (new-bots (or (lookup custom-state :bots) (map)))
          (bombs-to-check (or current-bombs (map))))
     
     ;; 1. Explosion at center

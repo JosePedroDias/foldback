@@ -159,6 +159,49 @@ function fbRandInt(seed, max) {
 }
 ```
 
+## 🌊 Step 5: Smoothing the World (Linear Interpolation)
+
+While **CSP** makes your own character feel responsive, other players might still "jitter" as their updates arrive over a jittery network. To fix this, we use **Linear Interpolation (Lerp)**.
+
+### The Concept
+Instead of rendering remote players at the *exact* position received in the last packet, we render them at a point in the past (e.g., 2 ticks ago) and smoothly transition between known states.
+
+### Implementation Pattern
+1.  **Delay the World**: Decide on an interpolation delay (e.g., `100ms` or `2 ticks`).
+2.  **Find States**: Look in your `world.history` for two snapshots: `StateA` (past) and `StateB` (more recent past).
+3.  **Blend**: Calculate the position: `Pos = StateA + (StateB - StateA) * alpha`.
+
+**Example JS Render Loop:**
+```javascript
+const INTERP_DELAY = 2; // Ticks
+
+function getInterpolatedState(world) {
+    const renderTick = world.authoritativeState.tick - INTERP_DELAY;
+    const stateA = world.history.get(renderTick);
+    const stateB = world.history.get(renderTick + 1);
+
+    if (!stateA || !stateB) return world.localState;
+
+    const lerpState = JSON.parse(JSON.stringify(stateA));
+    for (let id in lerpState.players) {
+        if (id == world.myPlayerId) {
+            // Predict yourself: NO DELAY
+            lerpState.players[id] = world.localState.players[id];
+        } else {
+            // Interpolate others: SMOOTH DELAY
+            const pA = stateA.players[id];
+            const pB = stateB.players[id];
+            lerpState.players[id].x = pA.x + (pB.x - pA.x) * 0.5;
+            lerpState.players[id].y = pA.y + (pB.y - pA.y) * 0.5;
+        }
+    }
+    return lerpState;
+}
+```
+
+### Why not interpolate the local player?
+Interpolation adds delay. If you interpolate your own character, your inputs will feel "mushy" or laggy. By using **CSP for yourself** and **Interpolation for others**, you get the best of both worlds: instant response and a buttery-smooth environment.
+
 ---
 
 ## ⚠️ The "Gotchas": Common Pitfalls

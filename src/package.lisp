@@ -29,7 +29,14 @@
            #:make-bomberman-map
            #:find-random-spawn
            #:spawn-bots
+           #:bomberman-join
            #:bomberman-update
            #:bomberman-serialize
            #:update-bombs
-           #:update-bots))
+           #:update-bots
+           
+           ;; Sumo Game Logic
+           #:make-sumo-player
+           #:sumo-join
+           #:sumo-update
+           #:sumo-serialize))

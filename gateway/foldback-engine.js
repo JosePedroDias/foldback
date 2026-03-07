@@ -4,13 +4,20 @@
  */
 
 class FoldBackWorld {
-    constructor() {
+    constructor(expectedGameId) {
         this.history = new Map();      // tick -> state (our PREDICTIONS)
         this.inputBuffer = new Map();  // tick -> input
         this.currentTick = 0;
         this.myPlayerId = null;
         this.totalRollbacks = 0;
+        this.expectedGameId = expectedGameId;
         
+        // Latency tracking
+        this.rtt = 0;
+        this.maxLead = 10; // Default max lead in ticks
+        this.pings = new Map(); // pingId -> timestamp
+        this.lastPingTime = 0;
+
         this.authoritativeState = { 
             tick: 0, 
             players: {}, 
@@ -42,10 +49,10 @@ function updateGame(state, inputs, simulationFn) {
  * Rewind history to targetTick and re-simulate to the present.
  */
 function rollbackAndResimulate(world, targetTick, inputsMap, simulationFn) {
-    let startState = world.history.get(targetTick);
+    let startState = world.history.get(targetTick - 1);
     if (!startState) return;
 
-    for (let t = targetTick + 1; t <= world.currentTick; t++) {
+    for (let t = targetTick; t <= world.currentTick; t++) {
         let curState = world.history.get(t - 1) || startState;
         let nextState = updateGame(curState, inputsMap.get(t) || {}, simulationFn);
         world.history.set(t, nextState);
@@ -58,8 +65,24 @@ function rollbackAndResimulate(world, targetTick, inputsMap, simulationFn) {
 function processServerMessage(world, data, simulationFn, applyDeltaFn, syncFn) {
     const delta = JSON.parse(data);
 
+    // Handle Ping Response
+    if (delta.pong !== undefined) {
+        const sentTime = world.pings.get(delta.pong);
+        if (sentTime) {
+            world.rtt = Date.now() - sentTime;
+            // Lead limit: Half RTT in ticks + 2 buffer
+            world.maxLead = Math.ceil((world.rtt / 2) / 16.6) + 2;
+            world.pings.delete(delta.pong);
+        }
+        return { type: 'pong' };
+    }
+
     // Handle Welcome Packet
     if (delta.your_id !== undefined) {
+        if (world.expectedGameId && delta.game_id !== world.expectedGameId) {
+            console.error(`GAME ID MISMATCH! Expected: ${world.expectedGameId}, Got: ${delta.game_id}`);
+            return { type: 'abort', reason: 'id_mismatch' };
+        }
         world.myPlayerId = delta.your_id;
         return { type: 'welcome', id: delta.your_id };
     }
@@ -82,9 +105,12 @@ function processServerMessage(world, data, simulationFn, applyDeltaFn, syncFn) {
             
             if (dist > 0.1) {
                 console.warn(`DETECTION_MISPREDICTION at tick ${serverTick}! Deviation: ${dist}`);
+                console.warn(`  Predicted: ${myPredicted.x},${myPredicted.y} | Auth: ${myAuthoritative.x},${myAuthoritative.y}`);
                 world.totalRollbacks++;
+                // 1. Set the foundation to the authoritative truth
                 world.history.set(serverTick, JSON.parse(JSON.stringify(world.authoritativeState)));
-                rollbackAndResimulate(world, serverTick, world.inputBuffer, simulationFn);
+                // 2. Re-simulate from serverTick + 1 to currentTick
+                rollbackAndResimulate(world, serverTick + 1, world.inputBuffer, simulationFn);
                 world.localState = JSON.parse(JSON.stringify(world.history.get(world.currentTick)));
             } else {
                 // Foundation Fix

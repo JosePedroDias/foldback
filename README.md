@@ -13,7 +13,8 @@ Traditional game networking engines (like Netick, Mirror, or Photon) require com
 1.  **Cheat-Resistance:** Absolute server authority on all game logic.
 2.  **Instant Rollback:** Zero-cost state snapshots via Lisp's immutable maps.
 3.  **Deterministic Simulation:** Pure functions ensure that `(next-state state input)` always yields the same result on any machine.
-4.  **Live-Coding (REPL):** Modify game rules, physics, and networking on-the-fly without restarting the server.
+4.  **Visual Smoothness:** Built-in patterns for **Client-Side Prediction** (CSP) and **Linear Interpolation** to eliminate network jitter.
+5.  **Live-Coding (REPL):** Modify game rules, physics, and networking on-the-fly without restarting the server.
 
 ---
 

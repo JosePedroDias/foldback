@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('Client identifies a bad prediction and rolls back', async ({ page }) => {
   // 1. Go to the game
-  await page.goto('http://localhost:8080');
+  await page.goto('http://localhost:8080/bomberman.html?protocol=websockets');
 
   // 2. Wait until we have a Player ID and are receiving ticks
   await expect(page.locator('#netStats')).toContainText('ID:', { timeout: 15000 });
@@ -44,13 +44,30 @@ test('Client identifies a bad prediction and rolls back', async ({ page }) => {
   await expect.poll(() => logs.some(l => l.includes('DETECTION_MISPREDICTION')), { timeout: 15000 }).toBeTruthy();
 
   // 6. Verify the player is back in a sane position (not 50, 50)
+  const posAfterRollback = await page.evaluate(() => {
+    // @ts-ignore
+    const p = world.localState.players[world.myPlayerId];
+    return { x: p.x, y: p.y };
+  });
+
+  console.log(`Position immediately after Rollback: ${posAfterRollback.x}, ${posAfterRollback.y}`);
+  expect(posAfterRollback.x).toBeLessThan(20);
+  expect(posAfterRollback.y).toBeLessThan(20);
+
+  // 7. STABILITY CHECK: Wait a few more frames and ensure we haven't diverged again
+  // (Convergence check)
+  await page.waitForTimeout(500);
   const finalPos = await page.evaluate(() => {
     // @ts-ignore
     const p = world.localState.players[world.myPlayerId];
     return { x: p.x, y: p.y };
   });
 
-  console.log(`Final Position after Rollback: ${finalPos.x}, ${finalPos.y}`);
+  console.log(`Final Position after 500ms stability: ${finalPos.x}, ${finalPos.y}`);
+  const drift = Math.sqrt(Math.pow(finalPos.x - posAfterRollback.x, 2) + Math.pow(finalPos.y - posAfterRollback.y, 2));
+  console.log(`Drift during stability period: ${drift}`);
+  
+  // Player shouldn't have moved much if we aren't pressing keys now
+  expect(drift).toBeLessThan(1.0); 
   expect(finalPos.x).toBeLessThan(20);
-  expect(finalPos.y).toBeLessThan(20);
 });

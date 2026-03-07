@@ -11,22 +11,30 @@
 
 (defun start-server (&key (port 4444) 
                           (delta t) 
-                          (simulation-fn #'foldback:bomberman-update)
-                          (serialization-fn #'foldback:bomberman-serialize)
-                          (initial-custom-state (map))
+                          (game-id nil)
+                          (simulation-fn nil)
+                          (serialization-fn nil)
+                          (join-fn nil)
+                          (initial-custom-state (fset:map))
                           (max-ticks nil))
   "Start the FoldBack UDP Server."
+  (unless game-id (error "START-SERVER: :GAME-ID is required."))
+  (unless simulation-fn (error "START-SERVER: :SIMULATION-FN is required."))
+  (unless serialization-fn (error "START-SERVER: :SERIALIZATION-FN is required."))
+  (unless join-fn (error "START-SERVER: :JOIN-FN is required."))
+
   (setf *next-player-id* 0)
-  (let* ((sim-fn (or simulation-fn #'foldback:bomberman-update))
-         (ser-fn (or serialization-fn #'foldback:bomberman-serialize))
-         (socket (usocket:socket-connect nil nil :protocol :datagram :local-port port))
+
+  (let* ((socket (usocket:socket-connect nil nil :protocol :datagram :local-port port))
          (buffer (make-array 4096 :element-type '(unsigned-byte 8)))
-         (world  (make-world :history (map (0 (initial-state :custom-state initial-custom-state)))))
-         (clients (map)) 
-         (last-client-states (map))
-         (client-last-seen (map))
+         (world  (make-world :history (fset:map (0 (initial-state :custom-state initial-custom-state)))))
+         (clients (fset:map)) 
+         (last-client-states (fset:map))
+         (client-last-seen (fset:map))
          (tick-rate (/ 1.0 60.0)))
     (setf *current-metrics* (make-metrics))
+    (cl:format t "FoldBack Engine Started [Game: ~A] on port ~A~%" game-id port)
+    
     (unwind-protect
          (loop
             (when (and max-ticks (>= (metrics-tick-count *current-metrics*) max-ticks))
@@ -39,100 +47,105 @@
                  (multiple-value-bind (received-buffer received-length remote-host remote-port)
                      (usocket:socket-receive socket buffer (length buffer))
                    (let* ((client-key (list remote-host remote-port))
-                          (player-id  (lookup clients client-key)))
-                     (setf client-last-seen (with client-last-seen client-key (get-internal-real-time)))
+                          (player-id  (fset:lookup clients client-key)))
+                     (setf client-last-seen (fset:with client-last-seen client-key (get-internal-real-time)))
                      (unless player-id
                        (setf player-id *next-player-id*)
                        (incf *next-player-id*)
-                       (format t "New Client: ~A as PID ~A (sim-fn: ~A, ser-fn: ~A)~%" 
-                               client-key player-id sim-fn ser-fn)
-                       (setf clients (with clients client-key player-id))
+                       (cl:format t "New Client: ~A as PID ~A (Game: ~A)~%" client-key player-id game-id)
+                       (setf clients (fset:with clients client-key player-id))
                        
-                       ;; Send Welcome Packet with authoritative ID
-                       (let ((welcome (format nil "{\"your_id\":~A}" player-id)))
+                       (let ((welcome (cl:format nil "{\"your_id\":~A,\"game_id\":\"~A\"}" player-id game-id)))
                          (usocket:socket-send socket welcome (length welcome) :host remote-host :port remote-port))
 
-                       ;; Game-specific player join logic
                        (let* ((cur-tick (world-current-tick world))
-                              (cur-s (lookup (world-history world) cur-tick))
-                              (cs (lookup cur-s :custom-state))
-                              (level (lookup cs :level))
-                              (spawn (foldback:find-random-spawn level cur-s))
-                              (new-p (make-player :x (lookup spawn :x) :y (lookup spawn :y))))
-                         (format t "Created PID ~A at ~A,~A~%" player-id (lookup spawn :x) (lookup spawn :y))
+                              (cur-s (or (fset:lookup (world-history world) cur-tick)
+                                         (initial-state :custom-state initial-custom-state)))
+                              (new-p (funcall join-fn player-id cur-s)))
                          (setf (world-history world)
-                               (with (world-history world) cur-tick
-                                     (with cur-s :players (with (lookup cur-s :players) player-id new-p))))))
+                               (fset:with (world-history world) cur-tick
+                                     (fset:with cur-s :players (fset:with (fset:lookup cur-s :players) player-id new-p))))))
                      
-                     (let ((raw-input (ignore-errors (read-from-string (map-into (make-string received-length) #'code-char received-buffer)))))
-                       (when (and (listp raw-input) (evenp (length raw-input)))
-                         (let ((input (let ((m (map)))
-                                        (loop for (k v) on raw-input by #'cddr
-                                              do (setf m (with m k v)))
-                                        m)))
-                           (if (lookup input :leave)
-                               (let ((pid (lookup clients client-key)))
-                                 (setf clients (less clients client-key))
-                                 (setf client-last-seen (less client-last-seen client-key))
-                                 (setf last-client-states (less last-client-states pid))
-                                 (let* ((cur-tick (world-current-tick world))
-                                        (cur-s (lookup (world-history world) cur-tick)))
-                                   (setf (world-history world)
-                                         (with (world-history world) cur-tick
-                                               (with cur-s :players (less (lookup cur-s :players) pid))))))
-                               
-                               (let ((target-tick (or (lookup input :t) (1+ (world-current-tick world)))))
-                                 ;; Store input in the correct tick slot
-                                 (setf (world-input-buffer world)
-                                       (with (world-input-buffer world) target-tick
-                                             (with (or (lookup (world-input-buffer world) target-tick) (map))
-                                                   player-id input)))
-                                 
-                                 ;; If input is for the past, trigger server-side rollback to fix history
-                                 (when (< target-tick (world-current-tick world))
-                                   (rollback-and-resimulate world target-tick (world-input-buffer world) sim-fn))))))))))
+                     (when (> received-length 0)
+                       (let ((raw-input (ignore-errors
+                                          (read-from-string
+                                           (let ((s (make-string received-length)))
+                                             (loop for i from 0 below received-length
+                                                   do (setf (cl:char s i) (cl:code-char (cl:aref received-buffer i))))
+                                             s)))))
+                         (when (and (listp raw-input) (evenp (length raw-input)))
+                           (let ((input (let ((m (fset:map)))
+                                          (loop for (k v) on raw-input by #'cddr
+                                                do (setf m (fset:with m k v)))
+                                          m)))
+                             (let ((ping-id (fset:lookup input :ping)))
+                               (when ping-id
+                                 (let ((pong (cl:format nil "{\"pong\":~A}" ping-id)))
+                                   (usocket:socket-send socket pong (length pong) :host remote-host :port remote-port))))
 
-              ;; 2. Cleanup Inactive Clients
+                             (if (fset:lookup input :leave)
+                                 (let ((pid (fset:lookup clients client-key)))
+                                   (setf clients (fset:less clients client-key))
+                                   (setf client-last-seen (fset:less client-last-seen client-key))
+                                   (setf last-client-states (fset:less last-client-states pid))
+                                   (let* ((cur-tick (world-current-tick world))
+                                          (cur-s (fset:lookup (world-history world) cur-tick)))
+                                     (when cur-s
+                                       (setf (world-history world)
+                                             (fset:with (world-history world) cur-tick
+                                                   (fset:with cur-s :players (fset:less (fset:lookup cur-s :players) pid)))))))
+                                 
+                                 (let ((target-tick (or (fset:lookup input :t) (1+ (world-current-tick world)))))
+                                   (setf (world-input-buffer world)
+                                         (fset:with (world-input-buffer world) target-tick
+                                               (fset:with (or (fset:lookup (world-input-buffer world) target-tick) (fset:map))
+                                                     player-id input)))
+                                   (when (< target-tick (world-current-tick world))
+                                     (rollback-and-resimulate world target-tick (world-input-buffer world) simulation-fn)))))))))))
+
+              ;; 2. Cleanup Inactive
               (let ((now (get-internal-real-time))
                     (timeout (* 300 internal-time-units-per-second)))
-                (do-map (ck last-seen client-last-seen)
+                (fset:do-map (ck last-seen client-last-seen)
                   (when (> (- now last-seen) timeout)
-                    (let ((pid (lookup clients ck)))
-                      (setf clients (less clients ck))
-                      (setf client-last-seen (less client-last-seen ck))
-                      (setf last-client-states (less last-client-states pid))
+                    (let ((pid (fset:lookup clients ck)))
+                      (setf clients (fset:less clients ck))
+                      (setf client-last-seen (fset:less client-last-seen ck))
+                      (setf last-client-states (fset:less last-client-states pid))
                       (let* ((cur-tick (world-current-tick world))
-                             (cur-s (lookup (world-history world) cur-tick)))
-                        (setf (world-history world)
-                              (with (world-history world) cur-tick
-                                    (with cur-s :players (less (lookup cur-s :players) pid)))))))))
+                             (cur-s (fset:lookup (world-history world) cur-tick)))
+                        (when cur-s
+                          (setf (world-history world)
+                                (fset:with (world-history world) cur-tick
+                                      (fset:with cur-s :players (fset:less (fset:lookup cur-s :players) pid))))))))))
+              
               ;; 3. Update Simulation
               (let* ((sim-start (get-internal-real-time))
                      (old-tick (world-current-tick world))
                      (new-tick (1+ old-tick))
-                     (old-state (lookup (world-history world) old-tick))
-                     (new-state (update-game old-state (lookup (world-input-buffer world) new-tick) sim-fn)))
+                     (old-state (fset:lookup (world-history world) old-tick))
+                     (new-state (update-game old-state (fset:lookup (world-input-buffer world) new-tick) simulation-fn)))
 
                 (setf (world-current-tick world) new-tick)
-                (setf (world-history world) (with (world-history world) new-tick new-state))
+                (setf (world-history world) (fset:with (world-history world) new-tick new-state))
                 (incf (metrics-sim-time *current-metrics*) (- (get-internal-real-time) sim-start))
+                
                 ;; 4. Broadcast
                 (let ((net-start (get-internal-real-time)))
                   (fset:do-map (client-key p-id clients)
                     (let* ((host (first client-key))
                            (port (second client-key))
-                           (last-s (lookup last-client-states p-id))
-                           (msg   (if delta
-                                      (funcall ser-fn new-state last-s)
-                                      (funcall ser-fn new-state nil))))
+                           (last-s (fset:lookup last-client-states p-id))
+                           (msg   (funcall serialization-fn new-state last-s)))
                       (when (and msg (> (length msg) 0))
-                        (when (= (mod new-tick 60) 0)
-                          (format t "Broadcasting Tick ~A to ~A (~A bytes)~%" new-tick client-key (length msg)))
-                        (setf last-client-states (with last-client-states p-id new-state))
+                        (setf last-client-states (fset:with last-client-states p-id new-state))
                         (incf (metrics-bytes-sent *current-metrics*) (length msg))
-                        (usocket:socket-send socket msg (length msg) :host host :port port))))
+                        (ignore-errors
+                          (usocket:socket-send socket msg (length msg) :host host :port port)))))
                   (incf (metrics-network-time *current-metrics*) (- (get-internal-real-time) net-start)))
+                
                 (incf (metrics-tick-count *current-metrics*))
+                
                 ;; 5. Accurate Sleep
                 (let* ((end-time (get-internal-real-time))
                        (elapsed (/ (- end-time start-tick-time) internal-time-units-per-second)))
