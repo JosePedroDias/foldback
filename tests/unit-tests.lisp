@@ -8,6 +8,7 @@
 (load "src/map.lisp")
 (load "src/bombs.lisp")
 (load "src/bots.lisp")
+(load "src/bomberman.lisp")
 (load "src/engine.lisp")
 
 (in-package #:foldback)

@@ -2,6 +2,8 @@
 
 (defun spawn-bots (level count)
   "Create N bots at random empty positions."
+  ;; Initial bot spawning still uses system random for variety, 
+  ;; but their behavior after start is deterministic.
   (let ((bots (map)))
     (loop for i from 0 below count
           do (let ((spawn (find-random-spawn level)))
@@ -12,9 +14,10 @@
     bots))
 
 (defun update-bots (state)
-  "Move bots and kill players on contact."
+  "Move bots and kill players on contact using deterministic PRNG."
   (let* ((custom (lookup state :custom-state))
-         (bots   (lookup custom :bots))
+         (seed   (or (lookup custom :seed) 0))
+         (bots   (or (lookup custom :bots) (map)))
          (level  (lookup custom :level))
          (players (lookup state :players))
          (new-bots (map))
@@ -31,8 +34,9 @@
         
         ;; Simple wall bounce logic
         (if (/= (get-tile level nx ny) 0)
-            ;; Hit wall, pick new direction
-            (let ((dir (random 4)))
+            ;; Hit wall, pick new direction DETERMINISTICALLY
+            (multiple-value-bind (new-seed dir) (fb-rand-int seed 4)
+              (setf seed new-seed)
               (case dir
                 (0 (setf dx 0.025 dy 0.0))
                 (1 (setf dx -0.025 dy 0.0))
@@ -53,5 +57,5 @@
             (setf new-players (with new-players pid 
                                     (with (with p :health 0) :death-tick tick)))))))
 
-    (with (with state :players new-players)
-          :custom-state (with custom :bots new-bots))))
+    (fset:with (fset:with state :players new-players)
+          :custom-state (fset:with (fset:with custom :bots new-bots) :seed seed))))

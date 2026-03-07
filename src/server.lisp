@@ -1,79 +1,27 @@
 (in-package #:foldback)
 
 (defstruct metrics
-  (sim-time 0)      ; Total internal time units spent in simulation
-  (network-time 0)  ; Total time units spent in networking
-  (tick-count 0)    ; Total ticks processed
-  (bytes-sent 0))   ; Total bytes sent over UDP
+  (sim-time 0)
+  (network-time 0)
+  (tick-count 0)
+  (bytes-sent 0))
 
 (defvar *current-metrics* (make-metrics))
+(defvar *next-player-id* 0)
 
-(defun serialize-delta (state last-state)
-  (let* ((players (lookup state :players))
-         (last-players (and last-state (lookup last-state :players)))
-         (custom  (lookup state :custom-state))
-         (level   (lookup custom :level))
-         (last-level (and last-state (lookup (lookup last-state :custom-state) :level)))
-         (bombs   (lookup custom :bombs))
-         (explosions (lookup custom :explosions))
-         (bots    (lookup custom :bots))
-         (tick    (lookup state :tick))
-         (parts   (list (format nil "\"t\":~A" tick))))
-    
-    ;; Players
-    (let ((p-deltas nil))
-      (do-map (id p players)
-        (let ((lp (and last-players (lookup last-players id))))
-          (unless (equal? p lp)
-            (push (format nil "{\"id\":~A,\"x\":~F,\"y\":~F,\"h\":~A}" 
-                          id (lookup p :x) (lookup p :y) (lookup p :health))
-                  p-deltas))))
-      (when p-deltas
-        (push (format nil "\"p\":[~{~A~^,~}]" (nreverse p-deltas)) parts)))
-    
-    ;; Level
-    (when (or (not last-level) (not (equal? level last-level)))
-      (let ((rows nil))
-        (loop for y from 0 below (fset:size level)
-              for row = (lookup level y)
-              do (push (format nil "[~{~A~^,~}]" 
-                               (loop for x from 0 below (fset:size row)
-                                     collect (lookup row x)))
-                       rows))
-        (push (format nil "\"l\":[~{~A~^,~}]" (nreverse rows)) parts)))
-    
-    ;; Bombs
-    (let ((b-list nil))
-      (do-map (bid b bombs)
-        (push (format nil "{\"x\":~A,\"y\":~A,\"tm\":~A}"
-                      (lookup b :x) (lookup b :y) (lookup b :timer))
-              b-list))
-      (push (format nil "\"b\":[~{~A~^,~}]" (nreverse b-list)) parts))
-
-    ;; Explosions
-    (let ((e-list nil))
-      (do-map (key timer explosions)
-        (let* ((coords (uiop:split-string key :separator ","))
-               (x (first coords))
-               (y (second coords)))
-          (push (format nil "{\"x\":~A,\"y\":~A}" x y) e-list)))
-      (push (format nil "\"e\":[~{~A~^,~}]" (nreverse e-list)) parts))
-
-    ;; Bots
-    (let ((bot-list nil))
-      (do-map (id bot bots)
-        (push (format nil "{\"x\":~F,\"y\":~F}" (lookup bot :x) (lookup bot :y)) bot-list))
-      (push (format nil "\"bots\":[~{~A~^,~}]" (nreverse bot-list)) parts))
-    
-    (format nil "{~{~A~^,~}}" (nreverse parts))))
-
-(defun start-server (&key (port 4444) (delta t) (width 13) (height 11) (max-ticks nil))
-  "Start the FoldBack UDP Server with Telemetry."
-  (let* ((socket (usocket:socket-connect nil nil :protocol :datagram :local-port port))
+(defun start-server (&key (port 4444) 
+                          (delta t) 
+                          (simulation-fn #'foldback:bomberman-update)
+                          (serialization-fn #'foldback:bomberman-serialize)
+                          (initial-custom-state (map))
+                          (max-ticks nil))
+  "Start the FoldBack UDP Server."
+  (setf *next-player-id* 0)
+  (let* ((sim-fn (or simulation-fn #'foldback:bomberman-update))
+         (ser-fn (or serialization-fn #'foldback:bomberman-serialize))
+         (socket (usocket:socket-connect nil nil :protocol :datagram :local-port port))
          (buffer (make-array 4096 :element-type '(unsigned-byte 8)))
-         (level  (make-bomberman-map width height))
-         (bots   (spawn-bots level 3)) ; Spawn 3 sentry bots
-         (world  (make-world :history (map (0 (initial-state :custom-state (map (:level level) (:bots bots)))))))
+         (world  (make-world :history (map (0 (initial-state :custom-state initial-custom-state)))))
          (clients (map)) 
          (last-client-states (map))
          (client-last-seen (map))
@@ -94,15 +42,28 @@
                           (player-id  (lookup clients client-key)))
                      (setf client-last-seen (with client-last-seen client-key (get-internal-real-time)))
                      (unless player-id
-                       (setf player-id (fset:size clients))
+                       (setf player-id *next-player-id*)
+                       (incf *next-player-id*)
+                       (format t "New Client: ~A as PID ~A (sim-fn: ~A, ser-fn: ~A)~%" 
+                               client-key player-id sim-fn ser-fn)
                        (setf clients (with clients client-key player-id))
+                       
+                       ;; Send Welcome Packet with authoritative ID
+                       (let ((welcome (format nil "{\"your_id\":~A}" player-id)))
+                         (usocket:socket-send socket welcome (length welcome) :host remote-host :port remote-port))
+
+                       ;; Game-specific player join logic
                        (let* ((cur-tick (world-current-tick world))
                               (cur-s (lookup (world-history world) cur-tick))
-                              (spawn (find-random-spawn level cur-s))
+                              (cs (lookup cur-s :custom-state))
+                              (level (lookup cs :level))
+                              (spawn (foldback:find-random-spawn level cur-s))
                               (new-p (make-player :x (lookup spawn :x) :y (lookup spawn :y))))
+                         (format t "Created PID ~A at ~A,~A~%" player-id (lookup spawn :x) (lookup spawn :y))
                          (setf (world-history world)
                                (with (world-history world) cur-tick
                                      (with cur-s :players (with (lookup cur-s :players) player-id new-p))))))
+                     
                      (let ((raw-input (ignore-errors (read-from-string (map-into (make-string received-length) #'code-char received-buffer)))))
                        (when (and (listp raw-input) (evenp (length raw-input)))
                          (let ((input (let ((m (map)))
@@ -119,10 +80,17 @@
                                    (setf (world-history world)
                                          (with (world-history world) cur-tick
                                                (with cur-s :players (less (lookup cur-s :players) pid))))))
-                               (setf (world-input-buffer world)
-                                     (with (world-input-buffer world) (1+ (world-current-tick world))
-                                           (with (or (lookup (world-input-buffer world) (1+ (world-current-tick world))) (map))
-                                                 player-id input))))))))))
+                               
+                               (let ((target-tick (or (lookup input :t) (1+ (world-current-tick world)))))
+                                 ;; Store input in the correct tick slot
+                                 (setf (world-input-buffer world)
+                                       (with (world-input-buffer world) target-tick
+                                             (with (or (lookup (world-input-buffer world) target-tick) (map))
+                                                   player-id input)))
+                                 
+                                 ;; If input is for the past, trigger server-side rollback to fix history
+                                 (when (< target-tick (world-current-tick world))
+                                   (rollback-and-resimulate world target-tick (world-input-buffer world) sim-fn))))))))))
 
               ;; 2. Cleanup Inactive Clients
               (let ((now (get-internal-real-time))
@@ -143,13 +111,7 @@
                      (old-tick (world-current-tick world))
                      (new-tick (1+ old-tick))
                      (old-state (lookup (world-history world) old-tick))
-                     (new-state (update-game old-state (lookup (world-input-buffer world) new-tick) #'move-and-slide)))
-
-                (when (= (mod new-tick 60) 0)
-                  (format t "Tick ~A | Players: ~A | Bombs: ~A | Bots: ~A~%" 
-                          new-tick (fset:size (lookup new-state :players)) 
-                          (fset:size (lookup (lookup new-state :custom-state) :bombs))
-                          (fset:size (lookup (lookup new-state :custom-state) :bots))))
+                     (new-state (update-game old-state (lookup (world-input-buffer world) new-tick) sim-fn)))
 
                 (setf (world-current-tick world) new-tick)
                 (setf (world-history world) (with (world-history world) new-tick new-state))
@@ -161,11 +123,14 @@
                            (port (second client-key))
                            (last-s (lookup last-client-states p-id))
                            (msg   (if delta
-                                      (serialize-delta new-state last-s)
-                                      (serialize-delta new-state nil))))
-                      (setf last-client-states (with last-client-states p-id new-state))
-                      (incf (metrics-bytes-sent *current-metrics*) (length msg))
-                      (usocket:socket-send socket msg (length msg) :host host :port port)))
+                                      (funcall ser-fn new-state last-s)
+                                      (funcall ser-fn new-state nil))))
+                      (when (and msg (> (length msg) 0))
+                        (when (= (mod new-tick 60) 0)
+                          (format t "Broadcasting Tick ~A to ~A (~A bytes)~%" new-tick client-key (length msg)))
+                        (setf last-client-states (with last-client-states p-id new-state))
+                        (incf (metrics-bytes-sent *current-metrics*) (length msg))
+                        (usocket:socket-send socket msg (length msg) :host host :port port))))
                   (incf (metrics-network-time *current-metrics*) (- (get-internal-real-time) net-start)))
                 (incf (metrics-tick-count *current-metrics*))
                 ;; 5. Accurate Sleep

@@ -7,10 +7,12 @@
   :components ((:module "src"
                 :components
                 ((:file "package")
+                 (:file "utils")
                  (:file "state")
                  (:file "physics")
                  (:file "map")
                  (:file "bombs")
                  (:file "bots")
+                 (:file "bomberman")
                  (:file "engine")
                  (:file "server")))))

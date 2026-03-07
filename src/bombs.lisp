@@ -126,7 +126,7 @@
 
 (defun tick-explosions (custom-state)
   "Decrease timer for all explosion tiles."
-  (let ((explosions (lookup custom-state :explosions))
+  (let ((explosions (or (lookup custom-state :explosions) (map)))
         (new-explosions (map)))
     (do-map (key timer explosions)
       (when (> timer 1)

@@ -12,22 +12,24 @@
                           #:equal?
                           #:empty-seq
                           #:do-map)
-  (:export #:make-player
-           #:initial-state
-           #:make-level
-           #:update-game
+  (:export ;; Engine Core
            #:world
            #:make-world
            #:world-history
            #:world-input-buffer
            #:world-current-tick
+           #:initial-state
+           #:update-game
            #:rollback-and-resimulate
-           ;; Bomb exports
-           #:update-bombs
-           ;; Physics exports
-           #:move-and-slide
-           #:collides?
-           ;; Map and Server exports
+           #:start-server
+           
+           ;; Bomberman Game Logic
+           #:make-player
+           #:make-level
            #:make-bomberman-map
            #:find-random-spawn
-           #:start-server))
+           #:spawn-bots
+           #:bomberman-update
+           #:bomberman-serialize
+           #:update-bombs
+           #:update-bots))
