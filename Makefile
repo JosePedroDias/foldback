@@ -1,13 +1,19 @@
-.PHONY: all lisp lisp-bomberman lisp-sumo lisp-airhockey lisp-jumpnbump gateway test clean setup test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit test-airhockey-cross test-jnb-cross benchmark check-lisp
+.PHONY: all lisp-bomberman lisp-sumo lisp-airhockey lisp-jumpnbump gateway test clean setup test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit test-airhockey-cross test-jnb-cross benchmark check-lisp
 
-all: lisp gateway
+all: lisp-bomberman gateway
 
-lisp: lisp-bomberman
+setup:
+	sbcl --eval "(ql:quickload :fset)" --eval "(ql:quickload :usocket)" --quit
+	cd gateway && go mod download
 
-lisp-jumpnbump:
-	sbcl --load foldback.asd \
+check-lisp:
+	sbcl --non-interactive \
+		 --load foldback.asd \
 		 --eval "(ql:quickload :foldback)" \
-		 --eval "(foldback:start-server :game-id \"jumpnbump\" :simulation-fn #'foldback:jnb-update :serialization-fn #'foldback:jnb-serialize :join-fn #'foldback:jnb-join :initial-custom-state (fset:map (:seed 123)))"
+		 --eval "(uiop:quit)"
+
+gateway:
+	cd gateway && go run main.go
 
 lisp-bomberman:
 	sbcl --load foldback.asd \
@@ -24,16 +30,12 @@ lisp-airhockey:
 		 --eval "(ql:quickload :foldback)" \
 		 --eval "(foldback:start-server :game-id \"airhockey\" :simulation-fn #'foldback:airhockey-update :serialization-fn #'foldback:airhockey-serialize :join-fn #'foldback:airhockey-join)"
 
-check-lisp:
-	sbcl --non-interactive \
-		 --load foldback.asd \
+lisp-jumpnbump:
+	sbcl --load foldback.asd \
 		 --eval "(ql:quickload :foldback)" \
-		 --eval "(uiop:quit)"
+		 --eval "(foldback:start-server :game-id \"jumpnbump\" :simulation-fn #'foldback:jnb-update :serialization-fn #'foldback:jnb-serialize :join-fn #'foldback:jnb-join :initial-custom-state (fset:map (:seed 123)))"
 
-gateway:
-	cd gateway && go run main.go
-
-test: test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit test-airhockey-cross test-jnb-cross
+test: test-lisp test-gateway test-bomberman-cross test-sumo-unit test-sumo-cross test-airhockey-cross test-jnb-cross
 
 test-lisp:
 	sbcl --non-interactive \
@@ -47,14 +49,21 @@ test-lisp:
 test-gateway:
 	cd gateway && go test -v ./...
 
-test-cross:
+test-bomberman-cross:
 	@echo "--- Running Bomberman Cross-Platform Tests ---"
-	node tests/cross-platform-test.js
+	node tests/bomberman-cross-test.js
 	@echo "\n--- Running Bomberman Cross-Platform Tests (Lisp) ---"
 	sbcl --non-interactive \
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
-		 --load tests/cross-platform-test.lisp
+		 --load tests/bomberman-cross-test.lisp
+
+test-sumo-unit:
+	@echo "--- Running Sumo Core Unit Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/sumo-unit-tests.lisp
 
 test-sumo-cross:
 	@echo "--- Running Sumo Cross-Platform Tests (JS) ---"
@@ -74,22 +83,6 @@ test-airhockey-cross:
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/airhockey-cross-test.lisp
 
-test-sumo-unit:
-	@echo "--- Running Sumo Core Unit Tests (Lisp) ---"
-	sbcl --non-interactive \
-		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
-		 --eval "(ql:quickload :foldback)" \
-		 --load tests/sumo-unit-tests.lisp
-
-benchmark:
-	sbcl --non-interactive \
-		 --load foldback.asd \
-		 --load tests/performance-bench.lisp
-
-setup:
-	sbcl --eval "(ql:quickload :fset)" --eval "(ql:quickload :usocket)" --quit
-	cd gateway && go mod download
-
 test-jnb-cross:
 	@echo "--- Running Jump and Bump Cross-Platform Tests (JS) ---"
 	node tests/jumpnbump-cross-test.js
@@ -98,3 +91,8 @@ test-jnb-cross:
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/jumpnbump-cross-test.lisp
+
+benchmark:
+	sbcl --non-interactive \
+		 --load foldback.asd \
+		 --load tests/performance-bench.lisp

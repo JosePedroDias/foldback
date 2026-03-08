@@ -4,7 +4,7 @@
 (load "src/fixed-point.lisp")
 (load "src/utils.lisp")
 (load "src/state.lisp")
-(load "src/airhockey.lisp")
+(load "src/games/airhockey.lisp")
 (load "src/engine.lisp")
 
 (in-package #:foldback)

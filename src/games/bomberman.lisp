@@ -287,8 +287,8 @@
          (health (fset:lookup player :health)))
     (if (<= health 0)
         player
-        (let* ((dx     (fp-from-float (or (fset:lookup input :dx) 0.0)))
-               (dy     (fp-from-float (or (fset:lookup input :dy) 0.0)))
+        (let* ((dx     (cl:round (* (or (fset:lookup input :dx) 0.0) 100)))
+               (dy     (cl:round (* (or (fset:lookup input :dy) 0.0) 100)))
                (custom (fset:lookup state :custom-state))
                (bombs  (or (fset:lookup custom :bombs) (fset:map)))
                (allowed-bomb-ids (get-overlapping-bombs x y bombs))

@@ -12,11 +12,11 @@ async function testMultiplayer(browser, game, protocol) {
     console.log(`PAGE UNCAUGHT EXCEPTION: ${error.message}`);
   });
 
-  await page1.goto(`http://localhost:8080/${game}.html?protocol=${protocol}`);
+  await page1.goto(`http://localhost:8080/${game}/?protocol=${protocol}`);
 
   const context2 = await browser.newContext();
   const page2 = await context2.newPage();
-  await page2.goto(`http://localhost:8080/${game}.html?protocol=${protocol}`);
+  await page2.goto(`http://localhost:8080/${game}/?protocol=${protocol}`);
 
   // Both should get an ID
   await expect(page1.locator('#netStats')).toContainText('ID:', { timeout: 20000 });

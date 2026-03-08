@@ -3,12 +3,8 @@
  * Uses Fixed-Point math for determinism.
  */
 
-if (typeof require !== 'undefined') {
-    const fp = require('./fixed-point.js');
-    const physics = require('./physics.js');
-    Object.assign(global, fp);
-    Object.assign(global, physics);
-}
+import { fpToFloat, fbRandInt, fpFromFloat, fpAdd, fpMul, fpDiv, fpClamp, fpSub } from '../fixed-point.js';
+import { fpAABBOverlapP } from '../physics.js';
 
 const JNB_TILE_SIZE = 16000;
 const JNB_PLAYER_SIZE = 16000;
@@ -39,14 +35,14 @@ const JNB_MAP = [
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 ];
 
-function getJnbTile(fpx, fpy) {
+export function getJnbTile(fpx, fpy) {
     const tx = Math.floor(fpToFloat(fpx) / 16);
     const ty = Math.floor(fpToFloat(fpy) / 16);
     if (isNaN(tx) || isNaN(ty) || tx < 0 || tx >= 22 || ty < 0 || ty >= 17) return 0;
     return JNB_MAP[ty][tx];
 }
 
-function randomJnbSpawn(seed) {
+export function randomJnbSpawn(seed) {
     let tx, ty;
     let currentSeed = seed;
     while (true) {
@@ -60,7 +56,7 @@ function randomJnbSpawn(seed) {
     }
 }
 
-function jnbUpdate(state, inputs) {
+export function jnbUpdate(state, inputs) {
     let nextTick = state.tick + 1;
     let players = { ...state.players };
     let custom = { ...(state.customState || {}) };
@@ -165,7 +161,7 @@ function jnbUpdate(state, inputs) {
     };
 }
 
-function jnbApplyDelta(baseState, delta) {
+export function jnbApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
     newState.tick = delta.t;
     if (delta.s !== undefined) newState.customState.seed = delta.s;
@@ -186,7 +182,7 @@ function jnbApplyDelta(baseState, delta) {
     return newState;
 }
 
-function jnbSync(localState, serverState, myPlayerId) {
+export function jnbSync(localState, serverState, myPlayerId) {
     for (let id in serverState.players) {
         const sp = serverState.players[id];
         const lp = localState.players[id];
@@ -208,6 +204,9 @@ function jnbSync(localState, serverState, myPlayerId) {
             }
         }
     }
+    for (let id in localState.players) {
+        if (!serverState.players[id]) delete localState.players[id];
+    }
     localState.customState.seed = serverState.customState.seed;
 }
 
@@ -222,7 +221,7 @@ let objectData = null;
 
 let particles = [];
 
-function spawnBlood(x, y) {
+export function spawnBlood(x, y) {
     for (let i = 0; i < 8; i++) {
         particles.push({
             x: x + 8,
@@ -235,21 +234,21 @@ function spawnBlood(x, y) {
     }
 }
 
-function jnbRender(ctx, canvas, localState, TILE_SIZE) {
+export function jnbRender(ctx, canvas, localState, TILE_SIZE) {
     if (!rabbitData || !rabbitStates || !objectData) return;
 
     ctx.imageSmoothingEnabled = false;
     if (!backgroundImage) {
         backgroundImage = new Image();
-        backgroundImage.src = 'jumpbump_bg.gif';
+        backgroundImage.src = 'gfx/bg.gif';
     }
     if (!spritesheet) {
         spritesheet = new Image();
-        spritesheet.src = 'rabbit.gif';
+        spritesheet.src = 'gfx/rabbit.gif';
     }
     if (!objectSheet) {
         objectSheet = new Image();
-        objectSheet.src = 'objects.gif';
+        objectSheet.src = 'gfx/objects.gif';
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -332,18 +331,18 @@ function jnbRender(ctx, canvas, localState, TILE_SIZE) {
     }
 }
 
-async function loadJnbAssets() {
+export async function loadJnbAssets() {
     console.log("Loading JNB assets...");
     try {
-        const r1 = await fetch('rabbit.json');
+        const r1 = await fetch('gfx/rabbit.json');
         if (!r1.ok) throw new Error(`Failed to load rabbit.json: ${r1.status}`);
         rabbitData = await r1.json();
         
-        const r2 = await fetch('rabbitStates.json');
+        const r2 = await fetch('gfx/rabbitStates.json');
         if (!r2.ok) throw new Error(`Failed to load rabbitStates.json: ${r2.status}`);
         rabbitStates = await r2.json();
 
-        const r3 = await fetch('objects.json');
+        const r3 = await fetch('gfx/objects.json');
         if (!r3.ok) throw new Error(`Failed to load objects.json: ${r3.status}`);
         objectData = await r3.json();
         
@@ -353,8 +352,4 @@ async function loadJnbAssets() {
         // Fallback or rethrow
         throw e;
     }
-}
-
-if (typeof module !== 'undefined') {
-    module.exports = { jnbUpdate, jnbApplyDelta, jnbSync, jnbRender, loadJnbAssets };
 }

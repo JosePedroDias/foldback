@@ -2,21 +2,18 @@
  * Shared Fixed-Point Physics & Collision
  */
 
-if (typeof require !== 'undefined') {
-    const fp = require('./fixed-point.js');
-    Object.assign(global, fp);
-}
+import { fpAdd, fpMul, fpDistSq, fpSub, fpSqrt, fpDiv, fpClamp, fpAbs } from './fixed-point.js';
 
 // --- Circle vs Circle ---
 
-function fpCirclesOverlapP(x1, y1, r1, x2, y2, r2) {
+export function fpCirclesOverlapP(x1, y1, r1, x2, y2, r2) {
     const minDist = fpAdd(r1, r2);
     const minDistSq = fpMul(minDist, minDist);
     const actualDistSq = fpDistSq(x1, y1, x2, y2);
     return actualDistSq < minDistSq;
 }
 
-function fpPushCircles(x1, y1, r1, x2, y2, r2) {
+export function fpPushCircles(x1, y1, r1, x2, y2, r2) {
     const dx = fpSub(x1, x2);
     const dy = fpSub(y1, y2);
     const distSq = fpAdd(fpMul(dx, dx), fpMul(dy, dy));
@@ -36,7 +33,7 @@ function fpPushCircles(x1, y1, r1, x2, y2, r2) {
 
 // --- Circle vs Segment ---
 
-function fpClosestPointOnSegment(px, py, x1, y1, x2, y2) {
+export function fpClosestPointOnSegment(px, py, x1, y1, x2, y2) {
     const dx = fpSub(x2, x1);
     const dy = fpSub(y2, y1);
     const lenSq = fpAdd(fpMul(dx, dx), fpMul(dy, dy));
@@ -50,7 +47,7 @@ function fpClosestPointOnSegment(px, py, x1, y1, x2, y2) {
 
 // --- AABB ---
 
-function fpAABBOverlapP(x1, y1, w1, h1, x2, y2, w2, h2) {
+export function fpAABBOverlapP(x1, y1, w1, h1, x2, y2, w2, h2) {
     const halfW1 = w1 / 2;
     const halfH1 = h1 / 2;
     const halfW2 = w2 / 2;
@@ -58,13 +55,4 @@ function fpAABBOverlapP(x1, y1, w1, h1, x2, y2, w2, h2) {
 
     return (fpAbs(fpSub(x1, x2)) < fpAdd(halfW1, halfW2)) &&
            (fpAbs(fpSub(y1, y2)) < fpAdd(halfH1, halfH2));
-}
-
-if (typeof module !== 'undefined') {
-    module.exports = {
-        fpCirclesOverlapP,
-        fpPushCircles,
-        fpClosestPointOnSegment,
-        fpAABBOverlapP
-    };
 }

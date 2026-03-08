@@ -3,7 +3,7 @@
  * Shared between Server (Lisp/JS) and Client (JS)
  */
 
-class FoldBackWorld {
+export class FoldBackWorld {
     constructor(expectedGameId) {
         this.history = new Map();      // tick -> state (our PREDICTIONS)
         this.inputBuffer = new Map();  // tick -> input
@@ -45,14 +45,14 @@ class FoldBackWorld {
 /**
  * Generic simulation loop: calls simulationFn with state and inputs.
  */
-function updateGame(state, inputs, simulationFn) {
+export function updateGame(state, inputs, simulationFn) {
     return simulationFn(state, inputs);
 }
 
 /**
  * Rewind history to targetTick and re-simulate to the present.
  */
-function rollbackAndResimulate(world, targetTick, inputsMap, simulationFn) {
+export function rollbackAndResimulate(world, targetTick, inputsMap, simulationFn) {
     let startState = world.history.get(targetTick - 1);
     if (!startState) return;
 
@@ -66,7 +66,7 @@ function rollbackAndResimulate(world, targetTick, inputsMap, simulationFn) {
 /**
  * Authoritative reconciliation core
  */
-function processServerMessage(world, data, simulationFn, applyDeltaFn, syncFn) {
+export function processServerMessage(world, data, simulationFn, applyDeltaFn, syncFn) {
     const delta = JSON.parse(data);
 
     // Handle Ping Response
@@ -148,9 +148,4 @@ function processServerMessage(world, data, simulationFn, applyDeltaFn, syncFn) {
     syncFn(world.localState, world.authoritativeState, world.myPlayerId);
     
     return { type: 'tick', tick: serverTick };
-}
-
-// Support Node.js/CommonJS environment for testing
-if (typeof module !== 'undefined') {
-    module.exports = { FoldBackWorld, updateGame, rollbackAndResimulate, processServerMessage };
 }

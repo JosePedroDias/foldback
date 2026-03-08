@@ -3,9 +3,9 @@
 ;; --- Sumo Constants (Fixed-Point) ---
 (defparameter +sumo-ring-radius+   10000) ;; 10.0
 (defparameter +sumo-player-radius+   500) ;; 0.5
-(defparameter +sumo-acceleration+     15) ;; 0.015
-(defparameter +sumo-friction+        960) ;; 0.96
-(defparameter +sumo-push-force+       50) ;; 0.05
+(defparameter +sumo-acceleration+     10) ;; 0.01
+(defparameter +sumo-friction+        950) ;; 0.95
+(defparameter +sumo-push-force+        5) ;; 0.005
 (defparameter +sumo-respawn-timeout+ 180) ;; 3 seconds at 60Hz
 
 (defun make-sumo-player (&key (x 0) (y 0) (h 100) (death-tick nil))
@@ -17,13 +17,26 @@
             (:death-tick death-tick)))
 
 (defun sumo-join (player-id state)
-  (declare (ignore player-id state))
-  "Initialize a new Sumo player at a random position inside the ring."
-  (let* ((angle (cl:random (* 2.0 pi)))
-         (dist  (cl:random (fp-to-float (fp-sub +sumo-ring-radius+ 2000))))
-         (x (fp-from-float (* dist (cos angle))))
-         (y (fp-from-float (* dist (sin angle)))))
-    (make-sumo-player :x x :y y)))
+  (declare (ignore player-id))
+  "Initialize a new Sumo player at a random position inside the ring, avoiding other players."
+  (let ((players (fset:lookup state :players))
+        (min-dist-sq (fp-mul (* 2 +sumo-player-radius+) (* 2 +sumo-player-radius+))))
+    (loop
+       for angle = (cl:random (* 2.0 pi))
+       for dist  = (cl:random (fp-to-float (fp-sub +sumo-ring-radius+ 2000)))
+       for x = (fp-from-float (* dist (cos angle)))
+       for y = (fp-from-float (* dist (sin angle)))
+       for collision = (fset:reduce 
+                        (lambda (acc pid p)
+                          (declare (ignore pid))
+                          (or acc 
+                              (and (> (fset:lookup p :h) 0)
+                                   (< (fp-dist-sq x y (fset:lookup p :x) (fset:lookup p :y))
+                                      min-dist-sq))))
+                        players
+                        :initial-value nil)
+       unless collision
+       return (make-sumo-player :x x :y y))))
 
 (defun sumo-update (state inputs)
   (let* ((players (fset:lookup state :players))

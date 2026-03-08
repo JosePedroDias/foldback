@@ -5,7 +5,7 @@
 (load "src/package.lisp")
 (load "src/fixed-point.lisp")
 (load "src/physics.lisp")
-(load "src/bomberman.lisp")
+(load "src/games/bomberman.lisp")
 (load "src/engine.lisp")
 
 (in-package #:foldback)

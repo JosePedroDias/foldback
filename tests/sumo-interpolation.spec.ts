@@ -3,11 +3,11 @@ import { test, expect } from '@playwright/test';
 test('Sumo: Linear Interpolation should be active for remote players', async ({ browser }) => {
   const context1 = await browser.newContext();
   const page1 = await context1.newPage();
-  await page1.goto('http://localhost:8080/sumo.html?protocol=websockets');
+  await page1.goto('http://localhost:8080/sumo/?protocol=websockets');
 
   const context2 = await browser.newContext();
   const page2 = await context2.newPage();
-  await page2.goto('http://localhost:8080/sumo.html?protocol=websockets');
+  await page2.goto('http://localhost:8080/sumo/?protocol=websockets');
 
   // Wait for both to connect
   await expect(page1.locator('#netStats')).toContainText('ID:', { timeout: 20000 });

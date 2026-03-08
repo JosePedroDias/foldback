@@ -1,4 +1,4 @@
-const { jnbUpdate } = require('../gateway/jumpnbump-logic.js');
+import { jnbUpdate } from '../gateway/jumpnbump/logic.js';
 
 function testGravity() {
     console.log("Testing Jump and Bump Gravity (JS)...");
@@ -18,8 +18,6 @@ function testGravity() {
 
 function testSquish() {
     console.log("\nTesting Jump and Bump Squish (JS)...");
-    // P1 falling onto P2. P2 is at y=100000. P1 is at y=90000. Player size is 16000.
-    // They are 10000 units apart, which is less than 16000, so they overlap.
     let state = { 
         tick: 0, 
         players: { 
@@ -55,7 +53,6 @@ function testRespawn() {
     let p = state.players[0];
     
     console.log(`P0 Respawn: x=${p.x}, y=${p.y}, d=${p.d}, seed=${state.customState.seed}`);
-    // Expected values from seed 123
     if (p.h === 100 && p.x === 64000 && p.y === 160000 && p.d === 1 && state.customState.seed === 1668141782) {
         console.log("PASS: Deterministic respawn match");
     } else {

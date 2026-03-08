@@ -1,8 +1,8 @@
-const fp = require('../gateway/fixed-point.js');
-const { airhockeyUpdate } = require('../gateway/airhockey-logic.js');
+import * as fp from '../gateway/fixed-point.js';
+import { airhockeyUpdate } from '../gateway/airhockey/logic.js';
 
 // Polyfill globals for deterministic testing
-Object.assign(global, fp);
+Object.assign(globalThis, fp);
 
 function assert(condition, message) {
     if (!condition) {

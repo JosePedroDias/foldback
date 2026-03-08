@@ -27,7 +27,8 @@
 
   (let* ((socket (usocket:socket-connect nil nil :protocol :datagram :local-port port))
          (buffer (make-array 4096 :element-type '(unsigned-byte 8)))
-         (world  (make-world :history (fset:map (0 (initial-state :custom-state initial-custom-state)))))
+         (initial-s (initial-state :custom-state initial-custom-state))
+         (world  (make-world :history (fset:map (0 initial-s))))
          (clients (fset:map)) 
          (last-client-states (fset:map))
          (client-last-seen (fset:map))

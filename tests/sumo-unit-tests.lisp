@@ -4,7 +4,7 @@
 (load "src/fixed-point.lisp")
 (load "src/utils.lisp")
 (load "src/state.lisp")
-(load "src/sumo.lisp")
+(load "src/games/sumo.lisp")
 (load "src/engine.lisp")
 
 (in-package #:foldback)

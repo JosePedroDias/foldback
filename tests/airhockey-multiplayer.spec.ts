@@ -3,11 +3,11 @@ import { test, expect } from '@playwright/test';
 async function testAirHockeyMultiplayer(browser, protocol) {
   const context1 = await browser.newContext();
   const page1 = await context1.newPage();
-  await page1.goto(`http://localhost:8080/airhockey.html?protocol=${protocol}`);
+  await page1.goto(`http://localhost:8080/airhockey/?protocol=${protocol}`);
 
   const context2 = await browser.newContext();
   const page2 = await context2.newPage();
-  await page2.goto(`http://localhost:8080/airhockey.html?protocol=${protocol}`);
+  await page2.goto(`http://localhost:8080/airhockey/?protocol=${protocol}`);
 
   // Both should get an ID
   await expect(page1.locator('#netStats')).toContainText('ID:', { timeout: 20000 });

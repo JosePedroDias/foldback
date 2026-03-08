@@ -11,9 +11,11 @@
                  (:file "state")
                  (:file "fixed-point")
                  (:file "physics")
-                 (:file "bomberman")
-                 (:file "sumo")
-                 (:file "airhockey")
-                 (:file "jumpnbump")
+                 (:module "games"
+                  :components
+                  ((:file "bomberman")
+                   (:file "sumo")
+                   (:file "airhockey")
+                   (:file "jumpnbump")))
                  (:file "engine")
                  (:file "server")))))

@@ -2,12 +2,8 @@
  * Air Hockey Game Logic (Segment-based Table)
  */
 
-if (typeof require !== 'undefined') {
-    const fp = require('./fixed-point.js');
-    const physics = require('./physics.js');
-    Object.assign(global, fp);
-    Object.assign(global, physics);
-}
+import { fpFromFloat, fpClamp, fpSub, fpMul, fpAdd, fpDistSq, fpSqrt, fpDiv } from '../fixed-point.js';
+import { fpCirclesOverlapP, fpPushCircles, fpClosestPointOnSegment } from '../physics.js';
 
 const AH_TABLE_WIDTH = 8000;
 const AH_TABLE_HEIGHT = 12000;
@@ -20,10 +16,7 @@ const AH_BOUNCE = 800;
 const AH_CORNER_RADIUS = 1000;
 
 function generateTableSegments() {
-    const halfW = AH_TABLE_WIDTH / 2000;
-    const halfH = AH_TABLE_HEIGHT / 2000;
     const cr = AH_CORNER_RADIUS / 1000;
-    const gw = AH_GOAL_WIDTH / 2000;
     const segments = [];
 
     function addSeg(x1, y1, x2, y2, type) {
@@ -67,9 +60,9 @@ function generateTableSegments() {
     return segments;
 }
 
-const AH_SEGMENTS = generateTableSegments();
+export const AH_SEGMENTS = generateTableSegments();
 
-function airhockeyUpdate(state, inputs) {
+export function airhockeyUpdate(state, inputs) {
     let nextTick = state.tick + 1;
     let nextPlayers = { ...state.players };
     let nextPuck = state.puck ? { ...state.puck } : null;
@@ -157,7 +150,7 @@ function airhockeyUpdate(state, inputs) {
     return { ...state, tick: nextTick, players: nextPlayers, puck: nextPuck, status: nextStatus };
 }
 
-function airhockeyApplyDelta(baseState, delta) {
+export function airhockeyApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
     newState.tick = delta.t;
     newState.status = delta.s;
@@ -170,7 +163,7 @@ function airhockeyApplyDelta(baseState, delta) {
 
 let lastServerState = null, currentServerState = null, lastSyncTime = 0;
 
-function airhockeySync(localState, serverState, myPlayerId) {
+export function airhockeySync(localState, serverState, myPlayerId) {
     lastServerState = currentServerState;
     currentServerState = JSON.parse(JSON.stringify(serverState));
     lastSyncTime = Date.now();
@@ -181,9 +174,12 @@ function airhockeySync(localState, serverState, myPlayerId) {
         else if (localState.players[id]) localState.players[id].sc = serverState.players[id].sc;
         else localState.players[id] = serverState.players[id];
     }
+    for (let id in localState.players) {
+        if (!serverState.players[id]) delete localState.players[id];
+    }
 }
 
-function airhockeyRender(ctx, canvas, localState, TILE_SIZE, myPlayerId) {
+export function airhockeyRender(ctx, canvas, localState, TILE_SIZE, myPlayerId) {
     const centerX = canvas.width / 2, centerY = canvas.height / 2;
     const margin = 1.1;
     const unitsW = (AH_TABLE_WIDTH / 1000) * margin, unitsH = (AH_TABLE_HEIGHT / 1000) * margin;
@@ -253,8 +249,4 @@ function airhockeyRender(ctx, canvas, localState, TILE_SIZE, myPlayerId) {
     ctx.fillText(`${s0} : ${s1}`, centerX, 40);
     ctx.font = "14px monospace";
     ctx.fillText(`Status: ${localState.status}`, centerX, canvas.height - 20);
-}
-
-if (typeof module !== 'undefined') {
-    module.exports = { airhockeyUpdate, airhockeyApplyDelta, airhockeySync, airhockeyRender };
 }

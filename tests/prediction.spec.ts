@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('Client identifies a bad prediction and rolls back', async ({ page }) => {
   // 1. Go to the game
-  await page.goto('http://localhost:8080/bomberman.html?protocol=websockets');
+  await page.goto('http://localhost:8080/bomberman/?protocol=websockets');
 
   // 2. Wait until we have a Player ID and are receiving ticks
   await expect(page.locator('#netStats')).toContainText('ID:', { timeout: 15000 });

@@ -2,12 +2,8 @@
  * Bomberman-Specific Game Logic (Fixed-Point Port)
  */
 
-if (typeof require !== 'undefined') {
-    const fp = require('./fixed-point.js');
-    const physics = require('./physics.js');
-    Object.assign(global, fp);
-    Object.assign(global, physics);
-}
+import { fpToFloat, fpAdd, fpFromFloat, fpAbs, fpSub, fbRandInt } from '../fixed-point.js';
+import { fpAABBOverlapP } from '../physics.js';
 
 const PLAYER_SIZE = 700;
 const HALF_SIZE = 350;
@@ -20,7 +16,7 @@ const COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f1c40f", "#9b59b6", "#1abc9c"
 /**
  * Returns the tile value at (x, y). Default is 1 (wall) if out of bounds.
  */
-function getTile(level, x, y) {
+export function getTile(level, x, y) {
     const ix = Math.floor(fpToFloat(fpAdd(x, 500)));
     const iy = Math.floor(fpToFloat(fpAdd(y, 500)));
     if (level && iy >= 0 && iy < level.length && ix >= 0 && ix < level[iy].length) {
@@ -32,7 +28,7 @@ function getTile(level, x, y) {
 /**
  * Returns a set of bomb IDs (e.g., "5,5") that overlap the player at (x, y).
  */
-function getOverlappingBombs(x, y, bombs) {
+export function getOverlappingBombs(x, y, bombs) {
     const h = HALF_SIZE;
     const ids = new Set();
     const offsets = [-h, h];
@@ -52,7 +48,7 @@ function getOverlappingBombs(x, y, bombs) {
 /**
  * Check collision with other living players using shared AABB logic.
  */
-function collidesWithPlayer(x, y, pid, players) {
+export function collidesWithPlayer(x, y, pid, players) {
     if (!players) return false;
     for (let otherId in players) {
         if (otherId == pid) continue;
@@ -68,7 +64,7 @@ function collidesWithPlayer(x, y, pid, players) {
 /**
  * Full collision check for Bomberman.
  */
-function bombermanCollides(x, y, pid, state, allowedBombIds) {
+export function bombermanCollides(x, y, pid, state, allowedBombIds) {
     const custom = state.customState || {};
     const level = custom.level || [];
     const bombs = custom.bombs || {};
@@ -93,11 +89,14 @@ function bombermanCollides(x, y, pid, state, allowedBombIds) {
 /**
  * Move-and-slide for Bomberman (Fixed-Point).
  */
-function bombermanMoveAndSlide(pid, player, input, state) {
+export function bombermanMoveAndSlide(pid, player, input, state) {
     if (player.h <= 0) return player;
 
-    const dx = fpFromFloat(input.dx || 0);
-    const dy = fpFromFloat(input.dy || 0);
+    // input.dx/dy are -1, 0, or 1.
+    // Lisp server uses (fp-from-float idx) where idx is -1, 0, or 1.
+    // fp-from-float(1.0) = 1000.
+    const dx = (input.dx || 0) * 100;
+    const dy = (input.dy || 0) * 100;
     const bombs = (state.customState && state.customState.bombs) || {};
     const allowedBombIds = getOverlappingBombs(player.x, player.y, bombs);
 
@@ -118,7 +117,7 @@ function bombermanMoveAndSlide(pid, player, input, state) {
 /**
  * Ported bomb spawning logic
  */
-function spawnBomb(player, customState) {
+export function spawnBomb(player, customState) {
     const bx = Math.floor(fpToFloat(fpAdd(player.x, 500)));
     const by = Math.floor(fpToFloat(fpAdd(player.y, 500)));
     const bid = `${bx},${by}`;
@@ -133,7 +132,7 @@ function spawnBomb(player, customState) {
 /**
  * Ported bomb update logic (Fixed-Point + Explosion Rays)
  */
-function updateBombs(state, inputs) {
+export function updateBombs(state, inputs) {
     let custom = { ...state.customState };
     let bombs = { ...(custom.bombs || {}) };
     let explosions = {};
@@ -209,7 +208,7 @@ function updateBombs(state, inputs) {
 /**
  * Ported bot logic
  */
-function updateBots(state) {
+export function updateBots(state) {
     const custom = state.customState || {};
     let seed = custom.seed || 0;
     const bots = custom.bots || {};
@@ -260,7 +259,7 @@ function updateBots(state) {
     };
 }
 
-function bombermanUpdate(state, inputs) {
+export function bombermanUpdate(state, inputs) {
     let nextTick = state.tick + 1;
     
     // updateBombs now returns updated players too because of explosions
@@ -285,7 +284,7 @@ function bombermanUpdate(state, inputs) {
     };
 }
 
-function bombermanApplyDelta(baseState, delta) {
+export function bombermanApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
     newState.tick = delta.t;
     if (delta.p) delta.p.forEach(dp => { newState.players[dp.id] = dp; });
@@ -303,19 +302,25 @@ function bombermanApplyDelta(baseState, delta) {
     return newState;
 }
 
-function bombermanSync(localState, serverState, myPlayerId) {
+export function bombermanSync(localState, serverState, myPlayerId) {
     for (let id in serverState.players) {
         if (id != myPlayerId) localState.players[id] = serverState.players[id];
         else if (localState.players[id]) localState.players[id].h = serverState.players[id].h;
         else localState.players[id] = serverState.players[id];
     }
+    
+    // Stale removal
+    for (let id in localState.players) {
+        if (!serverState.players[id]) delete localState.players[id];
+    }
+
     localState.customState.bombs = serverState.customState.bombs;
     localState.customState.explosions = serverState.customState.explosions;
     if (serverState.customState.level.length > 0) localState.customState.level = serverState.customState.level;
     localState.customState.bots = serverState.customState.bots;
 }
 
-function bombermanRender(ctx, canvas, localState, TILE_SIZE) {
+export function bombermanRender(ctx, canvas, localState, TILE_SIZE) {
     const custom = localState.customState;
     if (!custom || !custom.level || custom.level.length === 0) return;
     
@@ -368,8 +373,4 @@ function bombermanRender(ctx, canvas, localState, TILE_SIZE) {
             ctx.fillText("X", fpToFloat(p.x) * TILE_SIZE + 6, fpToFloat(p.y) * TILE_SIZE + 14);
         }
     });
-}
-
-if (typeof module !== 'undefined') {
-    module.exports = { bombermanUpdate, bombermanApplyDelta, bombermanSync, bombermanRender };
 }
