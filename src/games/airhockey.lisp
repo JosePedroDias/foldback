@@ -11,8 +11,8 @@
 (defparameter +ah-bounce+ 800)   ; 0.8
 (defparameter +ah-corner-radius+ 1000)
 
-(defun make-ah-player (id x y)
-  (fset:map (:id id) (:x x) (:y y) (:vx 0) (:vy 0) (:score 0)))
+(defun make-ah-player (id side x y)
+  (fset:map (:id id) (:side side) (:x x) (:y y) (:vx 0) (:vy 0) (:score 0)))
 
 (defun make-ah-puck (x y)
   (fset:map (:x x) (:y y) (:vx 0) (:vy 0)))
@@ -60,20 +60,35 @@
 
 (defparameter *ah-segments* (generate-table-segments))
 
+(defun ah-find-pid-by-side (players side)
+  "Find the player ID for the player on the given side."
+  (fset:do-map (pid p players)
+    (when (= (fset:lookup p :side) side)
+      (return-from ah-find-pid-by-side pid)))
+  nil)
+
+(defun ah-taken-sides (players)
+  "Return a list of sides already taken by existing players."
+  (let ((sides nil))
+    (fset:do-map (pid p players)
+      (declare (ignore pid))
+      (push (fset:lookup p :side) sides))
+    sides))
+
 (defun airhockey-join (player-id state)
-  (let ((players (fset:lookup state :players)))
-    (if (>= (fset:size players) 2)
-        nil
-        (cond
-          ((= (fset:size players) 0) (make-ah-player player-id 0 -4000))
-          ((= (fset:size players) 1) (make-ah-player player-id 0 4000))
-          (t nil)))))
+  (let* ((players (fset:lookup state :players))
+         (taken (ah-taken-sides players)))
+    (cond
+      ((>= (fset:size players) 2) nil)
+      ((not (member 0 taken)) (make-ah-player player-id 0 0 -4000))
+      ((not (member 1 taken)) (make-ah-player player-id 1 0 4000))
+      (t nil))))
 
 (defun airhockey-reset-positions (state &optional new-tick)
   (let* ((players (fset:lookup state :players))
          (new-players (fset:map)))
     (fset:do-map (pid p players)
-      (let ((ny (if (= pid 0) -4000 4000)))
+      (let ((ny (if (= (fset:lookup p :side) 0) -4000 4000)))
         (setf new-players (fset:with new-players pid 
                                     (fset:with (fset:with p :x 0) :y ny)))))
     (let ((ns (fset:with (fset:with state :players new-players)
@@ -87,6 +102,11 @@
          (status (or (fset:lookup state :status) :waiting))
          (new-players (fset:map))
          (new-puck puck))
+
+    ;; Reset to waiting if a player left during an active game
+    (when (and (not (eq status :waiting)) (< (fset:size players) 2))
+      (setf status :waiting)
+      (setf state (fset:with state :status :waiting)))
 
     (when (and (eq status :waiting) (>= (fset:size players) 2))
       (setf status :active)
@@ -108,8 +128,9 @@
              (half-h (/ +ah-table-height+ 2))
              (min-x (+ (- half-w) +ah-paddle-radius+))
              (max-x (- half-w +ah-paddle-radius+))
-             (min-y (if (= pid 0) (+ (- half-h) +ah-paddle-radius+) +ah-paddle-radius+))
-             (max-y (if (= pid 0) (- +ah-paddle-radius+) (- half-h +ah-paddle-radius+)))
+             (side (fset:lookup p :side))
+             (min-y (if (= side 0) (+ (- half-h) +ah-paddle-radius+) +ah-paddle-radius+))
+             (max-y (if (= side 0) (- +ah-paddle-radius+) (- half-h +ah-paddle-radius+)))
              (nx (fp-clamp target-x min-x max-x))
              (ny (fp-clamp target-y min-y max-y))
              (vx (fp-sub nx (fset:lookup p :x)))
@@ -169,17 +190,23 @@
                        (setf pvx (fp-mul (fp-sub pvx (fp-mul (fp-mul 2000 nx) dot)) +ah-bounce+))
                        (setf pvy (fp-mul (fp-sub pvy (fp-mul (fp-mul 2000 ny) dot)) +ah-bounce+)))))
                   ((eq type :goal-top)
-                   (let ((p1 (fset:lookup new-players 1)))
-                     (setf new-players (fset:with new-players 1 (fset:with p1 :score (1+ (fset:lookup p1 :score)))))
-                     (if (>= (fset:lookup (fset:lookup new-players 1) :score) +ah-max-score+)
-                         (setf status :p1-wins)
-                         (return-from airhockey-update (airhockey-reset-positions (fset:with state :players new-players) (1+ tick))))))
+                   ;; Goal at top: side-1 (bottom player) scores
+                   (let ((scorer-pid (ah-find-pid-by-side new-players 1)))
+                     (when scorer-pid
+                       (let ((sp (fset:lookup new-players scorer-pid)))
+                         (setf new-players (fset:with new-players scorer-pid (fset:with sp :score (1+ (fset:lookup sp :score)))))
+                         (if (>= (fset:lookup (fset:lookup new-players scorer-pid) :score) +ah-max-score+)
+                             (setf status :p1-wins)
+                             (return-from airhockey-update (airhockey-reset-positions (fset:with state :players new-players) (1+ tick))))))))
                   ((eq type :goal-bottom)
-                   (let ((p0 (fset:lookup new-players 0)))
-                     (setf new-players (fset:with new-players 0 (fset:with p0 :score (1+ (fset:lookup p0 :score)))))
-                     (if (>= (fset:lookup (fset:lookup new-players 0) :score) +ah-max-score+)
-                         (setf status :p0-wins)
-                         (return-from airhockey-update (airhockey-reset-positions (fset:with state :players new-players) (1+ tick))))))))))))
+                   ;; Goal at bottom: side-0 (top player) scores
+                   (let ((scorer-pid (ah-find-pid-by-side new-players 0)))
+                     (when scorer-pid
+                       (let ((sp (fset:lookup new-players scorer-pid)))
+                         (setf new-players (fset:with new-players scorer-pid (fset:with sp :score (1+ (fset:lookup sp :score)))))
+                         (if (>= (fset:lookup (fset:lookup new-players scorer-pid) :score) +ah-max-score+)
+                             (setf status :p0-wins)
+                             (return-from airhockey-update (airhockey-reset-positions (fset:with state :players new-players) (1+ tick))))))))))))))
 
       (setf new-puck (fset:map (:x px) (:y py) (:vx pvx) (:vy pvy))))
 
@@ -201,6 +228,6 @@
        (push (cl:format nil "\"pk\":{\"x\":~A,\"y\":~A,\"vx\":~A,\"vy\":~A}" (fset:lookup puck :x) (fset:lookup puck :y) (fset:lookup puck :vx) (fset:lookup puck :vy)) parts))
     (let ((p-list nil))
       (fset:do-map (id p players)
-        (push (cl:format nil "{\"id\":~A,\"x\":~A,\"y\":~A,\"vx\":~A,\"vy\":~A,\"sc\":~A}" id (fset:lookup p :x) (fset:lookup p :y) (fset:lookup p :vx) (fset:lookup p :vy) (fset:lookup p :score)) p-list))
+        (push (cl:format nil "{\"id\":~A,\"side\":~A,\"x\":~A,\"y\":~A,\"vx\":~A,\"vy\":~A,\"sc\":~A}" id (fset:lookup p :side) (fset:lookup p :x) (fset:lookup p :y) (fset:lookup p :vx) (fset:lookup p :vy) (fset:lookup p :score)) p-list))
       (when p-list (push (cl:format nil "\"p\":[~{~A~^,~}]" (nreverse p-list)) parts)))
     (cl:format nil "{~{~A~^,~}}" (nreverse parts))))

@@ -115,7 +115,12 @@ canvas.addEventListener('mousemove', (e) => {
 function onOpen() {
     console.log(`${protocol} Open!`);
     document.getElementById('netStats').innerText = "Connected! Waiting for ID...";
-    connection.send("()"); 
+    connection.send("()");
+    // Retry join until we get an ID (server may reject if game is temporarily full)
+    const joinRetry = setInterval(() => {
+        if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }
+        if (connection.isOpen()) connection.send("()");
+    }, 1000);
     sendInput();
 }
 
@@ -127,7 +132,7 @@ async function connectWS() {
 }
 
 async function connectWebRTC() {
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: `stun:${window.location.hostname}:3478` }] });
     const dc = pc.createDataChannel("foldback", { ordered: false, maxRetransmits: 0 });
     dc.onopen = onOpen;
     dc.onmessage = (e) => onMessage(e.data);
@@ -135,8 +140,11 @@ async function connectWebRTC() {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await new Promise(resolve => {
-        if (pc.iceGatheringState === 'complete') resolve();
-        else pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
+        if (pc.iceGatheringState === 'complete') return resolve();
+        const timeout = setTimeout(resolve, 2000);
+        pc.onicegatheringstatechange = () => {
+            if (pc.iceGatheringState === 'complete') { clearTimeout(timeout); resolve(); }
+        };
     });
     const response = await fetch('/offer', { method: 'POST', body: JSON.stringify(pc.localDescription) });
     const answer = await response.json();

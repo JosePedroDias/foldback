@@ -68,6 +68,10 @@ All game math uses integers scaled by 1000 (e.g., 1.5 = 1500). No floats in simu
 - Gateway only targets one Lisp server at a time
 - `npx playwright test tests/<file>.spec.ts` — run specific E2E test
 
+## Tools
+
+- `make check-parens` — checks all Lisp files for unbalanced parentheses. Run this after editing `.lisp` files to catch paren mismatches before loading into SBCL. Reports the last line where depth increased to help locate the problem.
+
 ## Common Pitfalls
 
 - The Go gateway serves static files from `gateway/` directory (not project root)

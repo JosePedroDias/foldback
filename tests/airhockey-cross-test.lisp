@@ -28,8 +28,8 @@
 (defun run-airhockey-tests ()
   (format t "~%Testing Air Hockey Cross-Platform (Lisp)...~%")
 
-  (let* ((p0 (make-ah-player 0 0 -4000))
-         (p1 (make-ah-player 1 0 4000))
+  (let* ((p0 (make-ah-player 0 0 0 -4000))
+         (p1 (make-ah-player 1 1 0 4000))
          (s0 (fset:map (:tick 0)
                        (:players (fset:map (0 p0) (1 p1)))
                        (:puck (make-ah-puck 0 0))
@@ -54,7 +54,7 @@
     ;; Test 3: Paddle-puck collision
     (let* ((s-coll (fset:map (:tick 0)
                              (:players (fset:map
-                                        (0 (fset:map (:id 0) (:x 0) (:y -1000) (:vx 0) (:vy 0) (:score 0)))
+                                        (0 (fset:map (:id 0) (:side 0) (:x 0) (:y -1000) (:vx 0) (:vy 0) (:score 0)))
                                         (1 p1)))
                              (:puck (fset:map (:x 0) (:y -300) (:vx 0) (:vy 0)))
                              (:status :active)))

@@ -17,7 +17,8 @@
                           (join-fn nil)
                           (initial-custom-state (fset:map))
                           (max-ticks nil)
-                          (tick-rate 60))
+                          (tick-rate 60)
+                          (client-timeout 300))
   "Start the FoldBack UDP Server."
   (unless game-id (error "START-SERVER: :GAME-ID is required."))
   (unless simulation-fn (error "START-SERVER: :SIMULATION-FN is required."))
@@ -112,7 +113,7 @@
 
               ;; 2. Cleanup Inactive
               (let ((now (get-internal-real-time))
-                    (timeout (* 300 internal-time-units-per-second)))
+                    (timeout (* client-timeout internal-time-units-per-second)))
                 (fset:do-map (ck last-seen client-last-seen)
                   (when (> (- now last-seen) timeout)
                     (let ((pid (fset:lookup clients ck)))

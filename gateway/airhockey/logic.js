@@ -62,10 +62,17 @@ function generateTableSegments() {
 
 export const AH_SEGMENTS = generateTableSegments();
 
+function findPidBySide(players, side) {
+    for (let pid in players) {
+        if (players[pid].side === side) return pid;
+    }
+    return null;
+}
+
 function airhockeyResetPositions(state, players, newTick) {
     let resetPlayers = {};
     for (let pid in players) {
-        let ny = (parseInt(pid) === 0) ? -4000 : 4000;
+        let ny = (players[pid].side === 0) ? -4000 : 4000;
         resetPlayers[pid] = { ...players[pid], x: 0, y: ny };
     }
     return { ...state, tick: newTick, players: resetPlayers, puck: { x: 0, y: 0, vx: 0, vy: 0 } };
@@ -77,11 +84,17 @@ export function airhockeyUpdate(state, inputs) {
     let nextPuck = state.puck ? { ...state.puck } : null;
     let nextStatus = state.status || 'waiting';
 
+    // Reset to waiting if a player left during an active game
+    if (nextStatus !== 'waiting' && Object.keys(nextPlayers).length < 2) {
+        nextStatus = 'waiting';
+    }
+
     if (nextStatus === 'waiting' && Object.keys(nextPlayers).length >= 2) {
         nextStatus = 'active';
         nextPuck = { x: 0, y: 0, vx: 0, vy: 0 };
         for (let id in nextPlayers) {
-            nextPlayers[id] = { ...nextPlayers[id], x: 0, y: (id == 0 ? -4000 : 4000), vx: 0, vy: 0 };
+            let ny = (nextPlayers[id].side === 0) ? -4000 : 4000;
+            nextPlayers[id] = { ...nextPlayers[id], x: 0, y: ny, vx: 0, vy: 0 };
         }
     }
 
@@ -97,7 +110,7 @@ export function airhockeyUpdate(state, inputs) {
         let minX = -halfW + AH_PADDLE_RADIUS, maxX = halfW - AH_PADDLE_RADIUS;
         let minY, maxY;
 
-        if (parseInt(pid) === 0) {
+        if (p.side === 0) {
             minY = -halfH + AH_PADDLE_RADIUS;
             maxY = -AH_PADDLE_RADIUS;
         } else {
@@ -151,20 +164,26 @@ export function airhockeyUpdate(state, inputs) {
                     pvx = fpMul(fpSub(pvx, fpMul(fpMul(2000, nx), dot)), AH_BOUNCE);
                     pvy = fpMul(fpSub(pvy, fpMul(fpMul(2000, ny), dot)), AH_BOUNCE);
                 } else if (seg.type === 'goal-top') {
-                    // Puck entered Player 0's goal — Player 1 scores
-                    nextPlayers[1] = { ...nextPlayers[1], sc: (nextPlayers[1].sc || 0) + 1 };
-                    if (nextPlayers[1].sc >= AH_MAX_SCORE) {
-                        nextStatus = 'p1-wins';
-                    } else {
-                        return airhockeyResetPositions(state, nextPlayers, nextTick);
+                    // Goal at top: side-1 (bottom player) scores
+                    let scorerPid = findPidBySide(nextPlayers, 1);
+                    if (scorerPid !== null) {
+                        nextPlayers[scorerPid] = { ...nextPlayers[scorerPid], sc: (nextPlayers[scorerPid].sc || 0) + 1 };
+                        if (nextPlayers[scorerPid].sc >= AH_MAX_SCORE) {
+                            nextStatus = 'p1-wins';
+                        } else {
+                            return airhockeyResetPositions(state, nextPlayers, nextTick);
+                        }
                     }
                 } else if (seg.type === 'goal-bottom') {
-                    // Puck entered Player 1's goal — Player 0 scores
-                    nextPlayers[0] = { ...nextPlayers[0], sc: (nextPlayers[0].sc || 0) + 1 };
-                    if (nextPlayers[0].sc >= AH_MAX_SCORE) {
-                        nextStatus = 'p0-wins';
-                    } else {
-                        return airhockeyResetPositions(state, nextPlayers, nextTick);
+                    // Goal at bottom: side-0 (top player) scores
+                    let scorerPid = findPidBySide(nextPlayers, 0);
+                    if (scorerPid !== null) {
+                        nextPlayers[scorerPid] = { ...nextPlayers[scorerPid], sc: (nextPlayers[scorerPid].sc || 0) + 1 };
+                        if (nextPlayers[scorerPid].sc >= AH_MAX_SCORE) {
+                            nextStatus = 'p0-wins';
+                        } else {
+                            return airhockeyResetPositions(state, nextPlayers, nextTick);
+                        }
                     }
                 }
             }
@@ -249,7 +268,7 @@ export function airhockeyRender(ctx, canvas, localState, TILE_SIZE, myPlayerId, 
             const p1 = lastServerState.players[id], p2 = currentServerState.players[id];
             p = { x: p1.x + (p2.x - p1.x) * lerpFactor, y: p1.y + (p2.y - p1.y) * lerpFactor };
         }
-        ctx.fillStyle = (id == 0) ? "#3498db" : "#f1c40f";
+        ctx.fillStyle = (p.side === 0) ? "#3498db" : "#f1c40f";
         ctx.beginPath();
         ctx.arc(centerX + (p.x/1000) * renderScale, centerY + (p.y/1000) * renderScale, (AH_PADDLE_RADIUS/1000) * renderScale, 0, Math.PI * 2);
         ctx.fill();
@@ -269,8 +288,10 @@ export function airhockeyRender(ctx, canvas, localState, TILE_SIZE, myPlayerId, 
     }
 
     ctx.fillStyle = "#fff"; ctx.font = "bold 32px monospace"; ctx.textAlign = "center";
-    const s0 = (localState.players[0] && localState.players[0].sc) || 0;
-    const s1 = (localState.players[1] && localState.players[1].sc) || 0;
+    const p0pid = findPidBySide(localState.players, 0);
+    const p1pid = findPidBySide(localState.players, 1);
+    const s0 = (p0pid !== null && localState.players[p0pid] && localState.players[p0pid].sc) || 0;
+    const s1 = (p1pid !== null && localState.players[p1pid] && localState.players[p1pid].sc) || 0;
     ctx.fillText(`${s0} : ${s1}`, centerX, 40);
     ctx.font = "14px monospace";
     ctx.fillText(`Status: ${localState.status}`, centerX, canvas.height - 20);

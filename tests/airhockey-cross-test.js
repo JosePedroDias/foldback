@@ -15,8 +15,8 @@ function assert(condition, message) {
 console.log("\nTesting Air Hockey Cross-Platform (JS)...");
 
 // --- Shared initial state ---
-const p0 = { id: 0, x: 0, y: -4000, vx: 0, vy: 0, sc: 0 };
-const p1 = { id: 1, x: 0, y: 4000, vx: 0, vy: 0, sc: 0 };
+const p0 = { id: 0, side: 0, x: 0, y: -4000, vx: 0, vy: 0, sc: 0 };
+const p1 = { id: 1, side: 1, x: 0, y: 4000, vx: 0, vy: 0, sc: 0 };
 const initialState = {
     tick: 0,
     players: { 0: p0, 1: p1 },
@@ -43,7 +43,7 @@ assert(s2.puck.x === 990, "Puck position updated by velocity");
 const sCollision = {
     tick: 0,
     players: {
-        0: { id: 0, x: 0, y: -1000, vx: 0, vy: 0, sc: 0 },
+        0: { id: 0, side: 0, x: 0, y: -1000, vx: 0, vy: 0, sc: 0 },
         1: { ...p1 }
     },
     puck: { x: 0, y: -300, vx: 0, vy: 0 },

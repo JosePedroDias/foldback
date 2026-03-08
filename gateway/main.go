@@ -7,15 +7,18 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/pion/turn/v2"
 	"github.com/pion/webrtc/v3"
 )
 
 const (
 	LispServerAddr = "127.0.0.1:4444"
 	SignalingPort  = ":8080"
+	STUNPort       = 3478
 )
 
 var upgrader = websocket.Upgrader{
@@ -32,8 +35,39 @@ var (
 	mu      sync.Mutex
 )
 
+func startSTUN() {
+	udpListener, err := net.ListenPacket("udp4", fmt.Sprintf("0.0.0.0:%d", STUNPort))
+	if err != nil {
+		log.Printf("STUN server failed to start: %v", err)
+		return
+	}
+
+	_, err = turn.NewServer(turn.ServerConfig{
+		Realm: "localhost",
+		AuthHandler: func(username string, realm string, srcAddr net.Addr) ([]byte, bool) {
+			return nil, false // STUN-only, no TURN auth needed
+		},
+		PacketConnConfigs: []turn.PacketConnConfig{{
+			PacketConn: udpListener,
+			RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{
+				RelayAddress: net.ParseIP("127.0.0.1"),
+				Address:      "0.0.0.0",
+			},
+		}},
+	})
+	if err != nil {
+		log.Printf("STUN server error: %v", err)
+		return
+	}
+
+	fmt.Printf("STUN server started on :%d\n", STUNPort)
+}
+
 func main() {
-	// 1. Endpoints
+	// 1. Local STUN server for WebRTC
+	startSTUN()
+
+	// 2. Endpoints
 	http.HandleFunc("/offer", handleOffer)
 	http.HandleFunc("/ws", handleWS)
 	http.Handle("/", http.FileServer(http.Dir(".")))
@@ -95,7 +129,7 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:stun.l.google.com:19302"}}},
+		ICEServers: []webrtc.ICEServer{{URLs: []string{fmt.Sprintf("stun:127.0.0.1:%d", STUNPort)}}},
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -104,16 +138,33 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 
 	clientID := uuid.New().String()
 
+	var udpConn *net.UDPConn
+	var udpOnce sync.Once
+
+	cleanupUDP := func() {
+		udpOnce.Do(func() {
+			if udpConn != nil {
+				fmt.Printf("WebRTC Client Left: %s\n", clientID)
+				udpConn.Write([]byte("(:leave t)"))
+				udpConn.Close()
+			}
+		})
+	}
+
+	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateClosed {
+			cleanupUDP()
+		}
+	})
+
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		fmt.Printf("New WebRTC DataChannel: %s\n", clientID)
 
 		udpAddr, _ := net.ResolveUDPAddr("udp", LispServerAddr)
-		udpConn, _ := net.DialUDP("udp", nil, udpAddr)
+		udpConn, _ = net.DialUDP("udp", nil, udpAddr)
 
 		d.OnClose(func() {
-			fmt.Printf("WebRTC DataChannel closed: %s\n", clientID)
-			udpConn.Write([]byte("(:leave t)"))
-			udpConn.Close()
+			cleanupUDP()
 		})
 
 		d.OnMessage(func(msg webrtc.DataChannelMessage) {
@@ -143,7 +194,10 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 	answer, _ := peerConnection.CreateAnswer(nil)
 	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
 	peerConnection.SetLocalDescription(answer)
-	<-gatherComplete
+	select {
+	case <-gatherComplete:
+	case <-time.After(2 * time.Second):
+	}
 
 	json.NewEncoder(w).Encode(peerConnection.LocalDescription())
 }
