@@ -85,7 +85,7 @@
               
               ;; 1. Horizontal Movement
               (let ((friction (if (= current-tile-below 3) +jnb-ice-friction+ +jnb-friction+)))
-                (setf vx (fp-div (fp-mul vx friction) 1000)))
+                (setf vx (fp-mul vx friction)))
               
               (when (/= dx 0)
                 (setf dir (if (> dx 0) 0 1))
@@ -130,7 +130,8 @@
                 (setf next-players (fset:with next-players pid 
                                                (fset:map (:id pid) (:x nx) (:y ny) (:vx vx) (:vy vy) (:h h) (:dir dir) (:on-ground is-on-ground)))))))))
 
-    ;; 7. Squish Logic
+    ;; 7. Squish Logic — iterates snapshot so a dead player can still kill in the
+    ;;    same tick (intentional: allows mutual/simultaneous kills).
     (let ((final-players next-players))
       (fset:do-map (p1-id p1 next-players)
         (fset:do-map (p2-id p2 next-players)
@@ -159,25 +160,24 @@
          (custom (fset:lookup state :custom-state))
          (seed (or (fset:lookup custom :seed) 0))
          (tick (fset:lookup state :tick))
-         (parts (list (cl:format nil "\"t\":~A" tick)
-                      (cl:format nil "\"s\":~A" seed))))
-    (let ((p-deltas nil))
+         (obj (json-obj "t" tick "s" seed)))
+    (let ((p-list nil))
       (fset:do-map (id p players)
-        (push (cl:format nil "{\"id\":~A,\"x\":~A,\"y\":~A,\"vx\":~A,\"vy\":~A,\"h\":~A,\"d\":~A,\"og\":~:[0~;1~]}" 
-                      id 
-                      (fset:lookup p :x) (fset:lookup p :y)
-                      (fset:lookup p :vx) (fset:lookup p :vy)
-                      (fset:lookup p :h)
-                      (fset:lookup p :dir)
-                      (if (fset:lookup p :on-ground) t nil))
-              p-deltas))
-      (when p-deltas
-        (push (cl:format nil "\"p\":[~{~A~^,~}]" (nreverse p-deltas)) parts)))
-    (cl:format nil "{~{~A~^,~}}" (nreverse parts))))
+        (push (json-obj "id" id
+                        "x" (fset:lookup p :x) "y" (fset:lookup p :y)
+                        "vx" (fset:lookup p :vx) "vy" (fset:lookup p :vy)
+                        "h" (fset:lookup p :h)
+                        "d" (fset:lookup p :dir)
+                        "og" (if (fset:lookup p :on-ground) 1 0))
+              p-list))
+      (when p-list
+        (setf (gethash "p" obj) (coerce (nreverse p-list) 'vector))))
+    (to-json obj)))
 
 (defun jnb-join (player-id state)
   (let* ((custom (fset:lookup state :custom-state))
-         (seed (or (fset:lookup custom :seed) 123)))
+         (base-seed (or (fset:lookup custom :seed) 123))
+         (seed (mod (+ base-seed (* player-id 2654435761)) 2147483648)))
     (multiple-value-bind (new-seed rx ry) (random-jnb-spawn seed)
       (declare (ignore new-seed))
       (make-jnb-player :id player-id :x rx :y ry :dir 0 :on-ground nil))))

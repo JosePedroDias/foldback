@@ -1,5 +1,17 @@
 (in-package #:foldback)
 
+(defun json-obj (&rest pairs)
+  "Build a hash table from alternating key-value pairs for JSON encoding."
+  (let ((ht (make-hash-table :test 'equal)))
+    (loop for (k v) on pairs by #'cddr
+          do (setf (gethash k ht) v))
+    ht))
+
+(defun to-json (value)
+  "Encode VALUE as a JSON string via yason."
+  (with-output-to-string (s)
+    (yason:encode value s)))
+
 ;; A simple deterministic LCG (Linear Congruential Generator)
 ;; This ensures that (fb-next-rand 123) always returns the same value 
 ;; on any platform (Lisp, JS, etc.)

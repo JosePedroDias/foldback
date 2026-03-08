@@ -42,9 +42,9 @@
 
 (defun fp-aabb-overlap-p (x1 y1 w1 h1 x2 y2 w2 h2)
   "Checks if two AABBs overlap. x,y are center points."
-  (let ((half-w1 (/ w1 2))
-        (half-h1 (/ h1 2))
-        (half-w2 (/ w2 2))
-        (half-h2 (/ h2 2)))
+  (let ((half-w1 (floor w1 2))
+        (half-h1 (floor h1 2))
+        (half-w2 (floor w2 2))
+        (half-h2 (floor h2 2)))
     (and (< (fp-abs (fp-sub x1 x2)) (fp-add half-w1 half-w2))
          (< (fp-abs (fp-sub y1 y2)) (fp-add half-h1 half-h2)))))

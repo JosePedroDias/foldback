@@ -2,7 +2,7 @@
   :description "An authoritative functional game server engine with rollback."
   :author "Gemini CLI"
   :license "MIT"
-  :depends-on (#:fset #:usocket)
+  :depends-on (#:fset #:usocket #:yason)
   :serial t
   :components ((:module "src"
                 :components

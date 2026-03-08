@@ -86,7 +86,7 @@ export function jnbUpdate(state, inputs) {
         let currentTileBelow = getJnbTile(p.x, fpAdd(p.y, JNB_PLAYER_SIZE));
         let friction = (currentTileBelow === 3) ? JNB_ICE_FRICTION : JNB_FRICTION;
 
-        p.vx = fpDiv(fpMul(p.vx, friction), 1000);
+        p.vx = fpMul(p.vx, friction);
         if (dx !== 0) {
             p.d = dx > 0 ? 0 : 1;
             p.vx = fpClamp(fpAdd(p.vx, dx > 0 ? JNB_ACCELERATION : -JNB_ACCELERATION), -JNB_MAX_SPEED, JNB_MAX_SPEED);

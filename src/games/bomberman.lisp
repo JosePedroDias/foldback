@@ -38,6 +38,8 @@
   (let* ((h (fset:size level))
          (w (fset:size (fset:lookup level 0)))
          (players (and state (fset:lookup state :players))))
+    ;; Uses CL:RANDOM (non-deterministic) — only called during join, which is
+    ;; server-authoritative and never client-predicted, so reproducibility is not needed.
     (loop
        for x = (random w)
        for y = (random h)
@@ -78,7 +80,7 @@
     (loop for y from 0 below height
           do (loop for x from 0 below width
                    do (when (and (= (get-tile level (fp-from-float (float x)) (fp-from-float (float y))) 0)
-                                 (> (random 100) 70)) ; 30% chance for crate
+                                 (> (random 100) 70)) ; 30% chance — CL:RANDOM is fine here: level is generated once at init, not during simulation
                         (setf level (set-tile level x y 2)))))
     level))
 
@@ -287,8 +289,8 @@
          (health (fset:lookup player :health)))
     (if (<= health 0)
         player
-        (let* ((dx     (cl:round (* (or (fset:lookup input :dx) 0.0) 100)))
-               (dy     (cl:round (* (or (fset:lookup input :dy) 0.0) 100)))
+        (let* ((dx     (cl:round (* (or (fset:lookup input :dx) 0) 100)))
+               (dy     (cl:round (* (or (fset:lookup input :dy) 0) 100)))
                (custom (fset:lookup state :custom-state))
                (bombs  (or (fset:lookup custom :bombs) (fset:map)))
                (allowed-bomb-ids (get-overlapping-bombs x y bombs))
@@ -350,46 +352,40 @@
          (bots    (or (fset:lookup custom :bots) (fset:map)))
          (seed    (or (fset:lookup custom :seed) 0))
          (tick    (fset:lookup state :tick))
-         (parts   (list (cl:format nil "\"t\":~A" tick)
-                        (cl:format nil "\"s\":~A" seed))))
-    
-    (let ((p-deltas nil))
+         (obj     (json-obj "t" tick "s" seed)))
+    (let ((p-list nil))
       (fset:do-map (id p players)
-        (push (cl:format nil "{\"id\":~A,\"x\":~A,\"y\":~A,\"h\":~A}" 
-                      id (fset:lookup p :x) (fset:lookup p :y) (fset:lookup p :health))
-              p-deltas))
-      (when p-deltas
-        (push (cl:format nil "\"p\":[~{~A~^,~}]" (nreverse p-deltas)) parts)))
-    
+        (push (json-obj "id" id "x" (fset:lookup p :x)
+                        "y" (fset:lookup p :y) "h" (fset:lookup p :health))
+              p-list))
+      (when p-list
+        (setf (gethash "p" obj) (coerce (nreverse p-list) 'vector))))
     (when (and level (or (not last-level) (not (fset:equal? level last-level))))
       (let ((rows nil))
         (loop for y from 0 below (fset:size level)
               for row = (fset:lookup level y)
-              do (push (cl:format nil "[~{~A~^,~}]" 
-                               (loop for x from 0 below (fset:size row)
-                                     collect (fset:lookup row x)))
+              do (push (coerce (loop for x from 0 below (fset:size row)
+                                     collect (fset:lookup row x))
+                               'vector)
                        rows))
-        (push (cl:format nil "\"l\":[~{~A~^,~}]" (nreverse rows)) parts)))
-    
+        (setf (gethash "l" obj) (coerce (nreverse rows) 'vector))))
     (let ((b-list nil))
       (fset:do-map (bid b bombs)
-        (push (cl:format nil "{\"x\":~A,\"y\":~A,\"tm\":~A}"
-                      (fset:lookup b :x) (fset:lookup b :y) (fset:lookup b :tm))
+        (push (json-obj "x" (fset:lookup b :x)
+                        "y" (fset:lookup b :y) "tm" (fset:lookup b :tm))
               b-list))
-      (push (cl:format nil "\"b\":[~{~A~^,~}]" (nreverse b-list)) parts))
-
+      (setf (gethash "b" obj) (coerce (nreverse b-list) 'vector)))
     (let ((e-list nil))
       (fset:do-map (key timer explosions)
         (declare (ignore timer))
         (let* ((coords (uiop:split-string key :separator ","))
-               (x (first coords))
-               (y (second coords)))
-          (push (cl:format nil "{\"x\":~A,\"y\":~A}" x y) e-list)))
-      (push (cl:format nil "\"e\":[~{~A~^,~}]" (nreverse e-list)) parts))
-
+               (x (parse-integer (first coords)))
+               (y (parse-integer (second coords))))
+          (push (json-obj "x" x "y" y) e-list)))
+      (setf (gethash "e" obj) (coerce (nreverse e-list) 'vector)))
     (let ((bot-list nil))
       (fset:do-map (id bot bots)
-        (push (cl:format nil "{\"x\":~A,\"y\":~A}" (fset:lookup bot :x) (fset:lookup bot :y)) bot-list))
-      (push (cl:format nil "\"bots\":[~{~A~^,~}]" (nreverse bot-list)) parts))
-    
-    (cl:format nil "{~{~A~^,~}}" (nreverse parts))))
+        (push (json-obj "x" (fset:lookup bot :x) "y" (fset:lookup bot :y))
+              bot-list))
+      (setf (gethash "bots" obj) (coerce (nreverse bot-list) 'vector)))
+    (to-json obj)))

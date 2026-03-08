@@ -169,19 +169,17 @@
          (ball (fset:lookup state :ball))
          (tick (fset:lookup state :tick))
          (status (or (fset:lookup state :status) :waiting))
-         (parts (list (cl:format nil "\"t\":~A" tick)
-                      (cl:format nil "\"s\":\"~A\"" status))))
+         (obj (json-obj "t" tick "s" (symbol-name status))))
     (when ball
-      (push (cl:format nil "\"bl\":{\"x\":~A,\"y\":~A,\"vx\":~A,\"vy\":~A}"
-                        (fset:lookup ball :x) (fset:lookup ball :y)
-                        (fset:lookup ball :vx) (fset:lookup ball :vy))
-            parts))
+      (setf (gethash "bl" obj)
+            (json-obj "x" (fset:lookup ball :x) "y" (fset:lookup ball :y)
+                      "vx" (fset:lookup ball :vx) "vy" (fset:lookup ball :vy))))
     (let ((p-list nil))
       (fset:do-map (id p players)
-        (push (cl:format nil "{\"id\":~A,\"side\":~A,\"x\":~A,\"y\":~A,\"sc\":~A}"
-                          id (fset:lookup p :side) (fset:lookup p :x)
-                          (fset:lookup p :y) (fset:lookup p :sc))
+        (push (json-obj "id" id "side" (fset:lookup p :side)
+                        "x" (fset:lookup p :x) "y" (fset:lookup p :y)
+                        "sc" (fset:lookup p :sc))
               p-list))
       (when p-list
-        (push (cl:format nil "\"p\":[~{~A~^,~}]" (nreverse p-list)) parts)))
-    (cl:format nil "{~{~A~^,~}}" (nreverse parts))))
+        (setf (gethash "p" obj) (coerce (nreverse p-list) 'vector))))
+    (to-json obj)))

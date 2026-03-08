@@ -10,7 +10,6 @@
 (defvar *next-player-id* 0)
 
 (defun start-server (&key (port 4444)
-                          (delta t)
                           (game-id nil)
                           (simulation-fn nil)
                           (serialization-fn nil)
@@ -75,12 +74,13 @@
                              (cl:format t "Join Rejected for ~A (Game Full)~%" client-key))))
                      
                      (when (and player-id (> received-length 0))
-                       (let ((raw-input (ignore-errors
-                                          (read-from-string
-                                           (let ((s (make-string received-length)))
-                                             (loop for i from 0 below received-length
-                                                   do (setf (cl:char s i) (cl:code-char (cl:aref received-buffer i))))
-                                             s)))))
+                       (let ((raw-input (let ((*read-eval* nil))
+                                          (ignore-errors
+                                            (read-from-string
+                                             (let ((s (make-string received-length)))
+                                               (loop for i from 0 below received-length
+                                                     do (setf (cl:char s i) (cl:code-char (cl:aref received-buffer i))))
+                                               s))))))
                          (when (and (listp raw-input) (evenp (length raw-input)))
                            (let ((input (let ((m (fset:map)))
                                           (loop for (k v) on raw-input by #'cddr
@@ -157,8 +157,20 @@
                   (incf (metrics-network-time *current-metrics*) (- (get-internal-real-time) net-start)))
                 
                 (incf (metrics-tick-count *current-metrics*))
-                
-                ;; 5. Accurate Sleep
+
+                ;; 5. Prune old history and input buffer
+                (let ((cutoff (- new-tick 120)))
+                  (when (> cutoff 0)
+                    (fset:do-map (tick-key tick-val (world-history world))
+                      (declare (ignore tick-val))
+                      (when (< tick-key cutoff)
+                        (setf (world-history world) (fset:less (world-history world) tick-key))))
+                    (fset:do-map (tick-key tick-val (world-input-buffer world))
+                      (declare (ignore tick-val))
+                      (when (< tick-key cutoff)
+                        (setf (world-input-buffer world) (fset:less (world-input-buffer world) tick-key))))))
+
+                ;; 6. Accurate Sleep
                 (let* ((end-time (get-internal-real-time))
                        (elapsed (/ (- end-time start-tick-time) internal-time-units-per-second)))
                   (when (< elapsed tick-interval)

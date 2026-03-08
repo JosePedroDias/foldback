@@ -168,15 +168,13 @@ Generates the delta broadcast to all clients. Returns a JSON string. Must includ
          (ball (fset:lookup state :ball))
          (tick (fset:lookup state :tick))
          (status (or (fset:lookup state :status) :waiting))
-         (parts (list (cl:format nil "\"t\":~A" tick)
-                      (cl:format nil "\"s\":\"~A\"" status))))
+         (obj (json-obj "t" tick "s" (symbol-name status))))
     (when ball
-      (push (cl:format nil "\"bl\":{\"x\":~A,\"y\":~A,\"vx\":~A,\"vy\":~A}"
-                        (fset:lookup ball :x) (fset:lookup ball :y)
-                        (fset:lookup ball :vx) (fset:lookup ball :vy))
-            parts))
+      (setf (gethash "bl" obj)
+            (json-obj "x" (fset:lookup ball :x) "y" (fset:lookup ball :y)
+                      "vx" (fset:lookup ball :vx) "vy" (fset:lookup ball :vy))))
     ;; ... serialize players array into "p":[...] ...
-    (cl:format nil "{~{~A~^,~}}" (nreverse parts))))
+    (to-json obj)))
 ```
 
 Pong serializes the full state every tick (no delta optimization). For a more complex game you would compare `state` to `last-state` and only send what changed.
