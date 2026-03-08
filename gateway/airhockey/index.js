@@ -5,6 +5,15 @@ import { airhockeyUpdate, airhockeyApplyDelta, airhockeySync, airhockeyRender } 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// Test state for Playwright
+window.foldback_test_state = {
+    clientState: null,
+    serverState: null,
+    lastInputSent: null,
+    lastRollback: null,
+    totalRollbacks: 0,
+};
+
 // Resize canvas to fit window
 function resize() {
     canvas.width = window.innerWidth;
@@ -17,6 +26,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const protocol = urlParams.get('protocol') || 'webrtc';
 
 const world = new FoldBackWorld("airhockey");
+window.world = world;
 world.reconciliationThresholdSq = 1; // Any integer difference in FP triggers rollback
 let connection = { send: (data) => {}, isOpen: () => false };
 let mouseX = 0, mouseY = 0;
@@ -24,6 +34,10 @@ let mouseX = 0, mouseY = 0;
 function onMessage(data) {
     const res = processServerMessage(world, data, airhockeyUpdate, airhockeyApplyDelta, airhockeySync);
     
+    // Update test state
+    window.foldback_test_state.serverState = world.authoritativeState;
+    window.foldback_test_state.totalRollbacks = world.totalRollbacks;
+
     if (res.type === 'abort') {
         alert("Game ID Mismatch!");
         return;
@@ -37,7 +51,10 @@ function onMessage(data) {
 }
 
 function renderLoop() {
-    airhockeyRender(ctx, canvas, world.localState, 0, world.myPlayerId);
+    // Update test state
+    window.foldback_test_state.clientState = world.localState;
+
+    airhockeyRender(ctx, canvas, world.localState, 0, world.myPlayerId, world.msPerTick);
     requestAnimationFrame(renderLoop);
 }
 requestAnimationFrame(renderLoop);
@@ -65,6 +82,9 @@ function sendInput() {
             
             connection.send(`(:tx ${tx} :ty ${ty} :t ${nextTick})`);
             
+            // Update test state
+            window.foldback_test_state.lastInputSent = { input, tick: nextTick };
+
             if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
             world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
             
@@ -84,7 +104,7 @@ function sendInput() {
             world.lastPingTime = now;
         }
     }
-    setTimeout(sendInput, 16); 
+    setTimeout(sendInput, world.msPerTick);
 }
 
 canvas.addEventListener('mousemove', (e) => {

@@ -16,18 +16,24 @@
          (s0 (initial-state :custom-state (map (:level level) (:bombs (map)) (:explosions (map)) (:bots (map)))))
          ;; Add player at (0, 0) in fixed-point
          (s0 (with s0 :players (map (:p1 (make-player :x 0 :y 0)))))
-         
-         ;; Move right by 1.0 (target x=1000, hits wall at index 1)
+
+         ;; Move right by 1.0 — speed is round(1.0 * 100) = 100 FP units per tick.
+         ;; Wall at tile index 1. Collision at corner x+350 reaching tile 1,
+         ;; i.e. floor((x+350+500)/1000) >= 1, so x >= 150.
+         ;; After 1 tick: x=100 (no collision). After 2 ticks: x=200 would collide,
+         ;; so player stays at 100.
          (input (map (:p1 (map (:dx 1.0) (:dy 0.0)))))
          (s1 (update-game s0 input #'bomberman-update))
-         
-         (player (lookup (lookup s1 :players) :p1)))
-    
-    (format t "Player X after hitting wall: ~A~%" (lookup player :x))
-    ;; Since wall is at X index 1, and player size is 700 (center to edge 350)
-    ;; player at X=0, dx=1000 -> target X=1000. 
-    ;; Edge at 1000+350 = 1350. Index floor(1350/1000)=1. Tile 1. Collision!
-    (assert (= (lookup player :x) 0))
-    (format t "Test Passed: Wall stopped movement!~%")))
+         (p1 (lookup (lookup s1 :players) :p1))
+         (s2 (update-game s1 input #'bomberman-update))
+         (p2 (lookup (lookup s2 :players) :p1)))
+
+    (format t "Player X after tick 1: ~A~%" (lookup p1 :x))
+    (assert (= (lookup p1 :x) 100))
+    (format t "Test Passed: Player moved to 100 (no wall hit yet)~%")
+
+    (format t "Player X after tick 2: ~A~%" (lookup p2 :x))
+    (assert (= (lookup p2 :x) 100))
+    (format t "Test Passed: Wall stopped movement at 100!~%")))
 
 (test-collision-stopping)

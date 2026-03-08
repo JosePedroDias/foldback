@@ -11,6 +11,7 @@ const protocol = urlParams.get('protocol') || 'webrtc';
 if (isAutoplay) document.getElementById('autoplayMode').style.display = 'block';
 
 const world = new FoldBackWorld("bomberman");
+window.world = world;
 let connection = { send: (data) => {}, isOpen: () => false };
 
 function onMessage(data) {
@@ -83,7 +84,7 @@ function sendInput() {
             world.lastPingTime = now;
         }
     }
-    setTimeout(sendInput, 16); 
+    setTimeout(sendInput, world.msPerTick);
 }
 
 function onOpen() {

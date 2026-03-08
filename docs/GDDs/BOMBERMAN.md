@@ -43,7 +43,7 @@ Bomberman is a grid-based multiplayer action game. Players navigate a maze, plac
 
 ## Technical Implementation
 - **Lisp (Server)**: 
-    - `src/bomberman.lisp`: Contains all game logic (main loop, map generation, bomb logic, and bot AI).
-- **JavaScript (Client)**: `gateway/bomberman-logic.js` (mirrored logic for prediction).
+    - `src/games/bomberman.lisp`: Contains all game logic (main loop, map generation, bomb logic, and bot AI).
+- **JavaScript (Client)**: `gateway/bomberman/logic.js` (mirrored logic for prediction).
 - **Synchronization**: Authoritative server with client-side prediction and reconciliation.
 - **Determinism**: Uses a shared seed and deterministic PRNG for synchronized bot movement and map features.

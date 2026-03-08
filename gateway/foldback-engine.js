@@ -16,6 +16,10 @@ export class FoldBackWorld {
         this.reconciliationThresholdSq = 0.01; // 0.1 units squared
         this.comparisonFn = null; // Optional custom comparison (stateA, stateB) -> boolean (true if match)
 
+        // Timing
+        this.tickRate = 60;
+        this.msPerTick = 1000 / 60; // Updated from server welcome
+
         // Latency tracking
         this.rtt = 0;
         this.maxLead = 10; // Default max lead in ticks
@@ -75,7 +79,7 @@ export function processServerMessage(world, data, simulationFn, applyDeltaFn, sy
         if (sentTime) {
             world.rtt = Date.now() - sentTime;
             // Lead limit: Half RTT in ticks + 2 buffer
-            world.maxLead = Math.ceil((world.rtt / 2) / 16.6) + 2;
+            world.maxLead = Math.ceil((world.rtt / 2) / world.msPerTick) + 2;
             world.pings.delete(delta.pong);
         }
         return { type: 'pong' };
@@ -88,6 +92,10 @@ export function processServerMessage(world, data, simulationFn, applyDeltaFn, sy
             return { type: 'abort', reason: 'id_mismatch' };
         }
         world.myPlayerId = delta.your_id;
+        if (delta.tick_rate) {
+            world.tickRate = delta.tick_rate;
+            world.msPerTick = 1000 / delta.tick_rate;
+        }
         return { type: 'welcome', id: delta.your_id };
     }
 
@@ -116,8 +124,15 @@ export function processServerMessage(world, data, simulationFn, applyDeltaFn, sy
             }
             
             if (mispredicted) {
-                // console.warn(`DETECTION_MISPREDICTION at tick ${serverTick}!`);
+                if (window.foldback_test_state) {
+                    window.foldback_test_state.lastRollback = {
+                        tick: serverTick,
+                        predicted: myPredicted,
+                        authoritative: myAuthoritative
+                    };
+                }
                 world.totalRollbacks++;
+                world._lastRollbackTick = serverTick;
                 // 1. Set the foundation to the authoritative truth
                 world.history.set(serverTick, JSON.parse(JSON.stringify(world.authoritativeState)));
                 // 2. Re-simulate from serverTick + 1 to currentTick
@@ -146,6 +161,15 @@ export function processServerMessage(world, data, simulationFn, applyDeltaFn, sy
 
     // Update non-predicted entities
     syncFn(world.localState, world.authoritativeState, world.myPlayerId);
-    
+
+    // Expose stats for testing (Playwright can poll window.foldbackStats)
+    if (typeof window !== 'undefined') {
+        window.foldbackStats = {
+            rollbackCount: world.totalRollbacks,
+            lastRollbackTick: world._lastRollbackTick || 0,
+            lastServerTick: serverTick,
+        };
+    }
+
     return { type: 'tick', tick: serverTick };
 }

@@ -53,11 +53,13 @@
            (p (lookup (lookup s2-final :players) 0)))
       (format t "  Final Position after server-side rollback: x=~A, y=~A~%" (lookup p :x) (lookup p :y))
       
-      ;; Starting at 1000, dx=0.1 (100), expected 1100
-      (if (= (lookup p :x) 1100)
+      ;; Starting at 1000, dx=0.1 -> round(0.1 * 100) = 10 FP units per tick
+      ;; After tick 1 (with input): x = 1000 + 10 = 1010
+      ;; After tick 2 (no input): x = 1010
+      (if (= (lookup p :x) 1010)
           (format t "  PASS: Late input was correctly integrated via server rollback!~%")
           (progn
-            (format t "  FAIL: Player is at ~A, expected 1100~%" (lookup p :x))
+            (format t "  FAIL: Player is at ~A, expected 1010~%" (lookup p :x))
             (uiop:quit 1))))))
 
 (test-late-input-server-rollback)

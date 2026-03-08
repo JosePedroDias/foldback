@@ -234,7 +234,7 @@ export function spawnBlood(x, y) {
     }
 }
 
-export function jnbRender(ctx, canvas, localState, TILE_SIZE) {
+export function jnbRender(ctx, canvas, localState, TILE_SIZE, msPerTick = 16.6) {
     if (!rabbitData || !rabbitStates || !objectData) return;
 
     ctx.imageSmoothingEnabled = false;
@@ -282,7 +282,7 @@ export function jnbRender(ctx, canvas, localState, TILE_SIZE) {
 
         if (Array.isArray(state)) {
             let totalDuration = state.reduce((acc, f) => acc + f[1], 0);
-            let time = (tick * 16.6) % totalDuration;
+            let time = (tick * msPerTick) % totalDuration;
             let elapsed = 0;
             for (let f of state) {
                 elapsed += f[1];

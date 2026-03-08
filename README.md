@@ -1,93 +1,106 @@
-# FoldBack: The Authoritative Functional Game Server
+# FoldBack
 
-**FoldBack** is a high-performance, authoritative game server engine written in **Common Lisp**. It is "fundamentally different" because it treats the entire game world as a single, immutable value using **Persistent Data Structures (FSet)**.
+FoldBack is an authoritative game server engine written in Common Lisp. It represents the entire game world as a single immutable value using persistent data structures ([FSet](https://common-lisp.net/project/fset/)). Because all state is immutable, rollback is a `reduce` over a history of inputs rather than a manual save/restore operation.
 
-In FoldBack, "Time Travel" (Rollback) is not a complex manual operation—it is simply a `fold` (reduce) over a history of inputs.
+## How It Works
 
----
+The server runs a game loop at 60Hz. Each tick, a pure function takes the current state and all player inputs, and returns the next state:
 
-## 🎯 Purpose
-Traditional game networking engines (like Netick, Mirror, or Photon) require complex manual state-saving, memory-copying, and serialization to handle prediction and rollback. 
-
-**FoldBack** aims to provide:
-1.  **Cheat-Resistance:** Absolute server authority on all game logic.
-2.  **Instant Rollback:** Zero-cost state snapshots via Lisp's immutable maps.
-3.  **Deterministic Simulation:** Pure functions ensure that `(next-state state input)` always yields the same result on any machine.
-4.  **Visual Smoothness:** Built-in patterns for **Client-Side Prediction** (CSP) and **Linear Interpolation** to eliminate network jitter.
-5.  **Live-Coding (REPL):** Modify game rules, physics, and networking on-the-fly without restarting the server.
-
----
-
-## 🏗️ Architecture: Engine vs. Game Logic
-
-The project is structured to separate the generic **FoldBack Engine** from the specific **Game Logic**. This makes the engine reusable for any type of game (e.g., arcade, action, racing).
-
-### 1. The Generic Engine (`foldback`)
-The core engine provides the "shell" for state management and networking without knowing the specific rules of the game.
-*   **`src/engine.lisp`**: The generic `update-game` and `rollback-and-resimulate` loop. It accepts a `simulation-fn` to perform the actual work.
-*   **`src/state.lisp`**: The `world` struct which manages a history of immutable snapshots (`fset:map`) and an input buffer.
-*   **`src/server.lisp`**: A generic UDP server that handles client connections, heartbeats, and high-frequency broadcasts using a pluggable `serialization-fn`.
-
-### 2. Example Games
-FoldBack includes several example games that demonstrate different types of physics and interaction patterns:
-- **Bomberman ([GDD](BOMBERMAN_GDD.md) | `src/bomberman.lisp`)**: Grid-based movement, tile collision, bot AI, and infinite-ray explosion logic.
-- **Sumo ([GDD](SUMO_GDD.md) | `src/sumo.lisp`)**: Continuous physics (acceleration/friction) and circle-to-circle collision response.
-- **Air Hockey ([GDD](AIRHOCKEY_GDD.md) | `src/airhockey.lisp`)**: 1:1 positional tracking (paddle follow) and high-speed puck bounces against circular and linear boundaries.
-- **Jump and Bump ([GDD](JUMPNBUMP_GDD.md) | `src/jumpnbump.lisp`)**: Side-scrolling platformer physics with gravity, horizontal inertia, and "squish" collision logic (jumping on heads).
-
----
-
-## 🧠 The Core Concept: Rollback as a Fold
-In an imperative engine, rolling back to tick 100 means reloading a file or copying memory. In **FoldBack**, it is a single line of Lisp:
-
-```lisp
-;; Rewind time to a "Good" state and re-simulate to the present
-(defun rollback (world target-tick simulation-fn)
-  (reduce (lambda (state inputs) (funcall simulation-fn state inputs))
-          (get-history world target-tick) ;; The past "good" state
-          (get-inputs-since world target-tick))) ;; All inputs since then
+```
+NewState = SimulationFn(CurrentState, Inputs)
 ```
 
-Because the simulation function is **Pure** (no side effects), we can re-simulate 100 frames in a single server-tick to catch up to the "real" present when a late client input arrives.
+Because the function is pure (no side effects, no mutation), the engine can:
 
----
+- **Roll back** by starting from a past state and re-applying inputs from that point forward.
+- **Handle late packets** by rewinding to the tick the input was meant for, inserting it, and re-simulating to the present.
+- **Enable client-side prediction** by running the same function in the browser (ported to JavaScript) so the local player's actions feel instant, then reconciling with the server when its authoritative state arrives.
 
-## 🧪 Porting for Client-Side Prediction (CSP)
-Because the game logic is written using **pure functions** and **deterministic fixed-point physics**, it is trivial to port to JavaScript. 
+All physics use fixed-point integer arithmetic and a seeded PRNG to ensure the Lisp server and JavaScript client produce identical results from the same inputs.
 
-A client can run the exact same `update` logic locally to predict movement, then use the engine's `rollback-and-resimulate` pattern to reconcile with the server's authoritative state updates. Ports for all three games are included in `gateway/*.js`.
+## Architecture
 
----
+The project has three layers:
 
-## 🚀 Getting Started
-1.  **Prerequisites:** Install [SBCL](http://www.sbcl.org/) and [Go](https://go.dev/).
-2.  **Quickstart:**
-    ```bash
-    make setup
-    # terminal 1 (starts the Lisp server - choose one game)
-    make lisp-bomberman # OR lisp-sumo OR lisp-airhockey
-    # terminal 2 (starts the WebRTC/UDP gateway)
-    make gateway
-    ```
+| Layer | Language | Role |
+|-------|----------|------|
+| **Engine** (`src/`) | Common Lisp | Pure simulation loop, immutable state history, input buffering, delta-encoded broadcasts |
+| **Gateway** (`gateway/`) | Go | WebSocket/WebRTC proxy between browsers and the Lisp UDP server. Game-agnostic — no changes needed for new games |
+| **Client** (`gateway/[game]/`) | JavaScript | Mirrors the Lisp simulation for prediction, handles rendering, reconciliation, and interpolation |
 
----
+### Engine Files
 
-## 🧪 Automated Testing
-FoldBack uses **Playwright** for end-to-end multiplayer testing, ensuring that multiple clients can connect, see each other, and interact correctly.
+- `src/engine.lisp` — generic `update-game` and rollback loop, accepts a pluggable `simulation-fn`
+- `src/state.lisp` — `world` struct managing immutable state history and input buffer
+- `src/server.lisp` — UDP server handling connections, heartbeats, and broadcasts
+- `src/fixed-point.lisp` — fixed-point arithmetic helpers
+- `src/physics.lisp` — shared collision primitives (circle-circle, circle-line-segment)
 
-### Running Tests
-To run the automated 2-player multiplayer test:
-1.  **Start the servers:**
-    ```bash
-    make lisp & 
-    make gateway &
-    sleep 5
-    ```
-2.  **Run Playwright:**
-    ```bash
-    npm run test:multiplayer
-    ```
+### Adding a Game
 
----
+Each game provides 3 Lisp functions (join, update, serialize) and 4 JavaScript functions (update, applyDelta, sync, render). The engine handles rollback, networking, and reconciliation. See [the tutorial](docs/TUTORIAL_CSP.md) for the full walkthrough and checklist.
 
-*“In FoldBack, time is just a variable you can reduce over.”*
+## Example Games
+
+| Game | Source | Physics | Key Mechanic |
+|------|--------|---------|-------------|
+| Bomberman | [GDD](docs/GDDs/BOMBERMAN.md), `src/games/bomberman.lisp` | Grid-based | Bomb placement, chain reactions, bot AI |
+| Sumo | [GDD](docs/GDDs/SUMO_GDD.md), `src/games/sumo.lisp` | Continuous (acceleration/friction) | Circle-to-circle push in a circular ring |
+| Air Hockey | [GDD](docs/GDDs/AIRHOCKEY.md), `src/games/airhockey.lisp` | Fixed-point circle/line | 1:1 paddle tracking, puck bounces, scoring to 11 |
+| Jump and Bump | [GDD](docs/GDDs/JUMPNBUMP.md), `src/games/jumpnbump.lisp` | Platformer (gravity, inertia) | Head-stomping elimination, screen wrapping |
+
+Each game has its logic mirrored in JavaScript under `gateway/[game]/logic.js` for client-side prediction.
+
+## Getting Started
+
+### Prerequisites
+
+- [SBCL](http://www.sbcl.org/) (Common Lisp compiler)
+- [Go](https://go.dev/)
+- Node.js (for tests and Playwright)
+
+### Running
+
+```bash
+make setup
+
+# Terminal 1 — start a game server (pick one)
+make lisp-bomberman
+make lisp-sumo
+make lisp-airhockey
+make lisp-jumpnbump
+
+# Terminal 2 — start the gateway
+make gateway
+```
+
+Then open `http://localhost:8080` in a browser.
+
+## Testing
+
+### Unit and Cross-Platform Tests
+
+```bash
+make test
+```
+
+This runs Lisp unit tests, Go gateway tests, and cross-platform determinism tests (same inputs through both Lisp and JS, comparing final state) for all games.
+
+### Playwright E2E Tests
+
+```bash
+make lisp-bomberman &
+make gateway &
+sleep 5
+npm run test:multiplayer
+```
+
+Launches two headless browsers and verifies that players can connect, see each other, and interact.
+
+## Documentation
+
+- [Tutorial: Building Games with FoldBack](docs/TUTORIAL_CSP.md) — state contract, the 7 functions, CSP bridge, determinism, wiring, and a new-game checklist
+- [CSP Roadmap](docs/ROADMAP_CSP.md) — implementation status of prediction, rollback, interpolation, and per-player acks
+- [Debugging Reference](docs/DEBUGGING.md) — SBCL/FSet/ASDF gotchas and solutions
+- [Test Plan](docs/TEST_PLAN.md) — Playwright and Lisp test strategy for validating prediction and rollback
+- Game Design Documents: [Bomberman](docs/GDDs/BOMBERMAN.md), [Sumo](docs/GDDs/SUMO_GDD.md), [Air Hockey](docs/GDDs/AIRHOCKEY.md), [Jump and Bump](docs/GDDs/JUMPNBUMP.md)

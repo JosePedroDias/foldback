@@ -76,7 +76,7 @@ function sendInput() {
             world.lastPingTime = now;
         }
     }
-    setTimeout(sendInput, 16); 
+    setTimeout(sendInput, world.msPerTick);
 }
 
 function onOpen() {

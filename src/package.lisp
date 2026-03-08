@@ -60,6 +60,8 @@
            #:fp-aabb-overlap-p
            
            ;; Air Hockey Game Logic
+           #:make-ah-player
+           #:make-ah-puck
            #:airhockey-join
            #:airhockey-update
            #:airhockey-serialize

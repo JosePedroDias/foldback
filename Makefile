@@ -1,4 +1,4 @@
-.PHONY: all lisp-bomberman lisp-sumo lisp-airhockey lisp-jumpnbump gateway test clean setup test-lisp test-gateway test-cross test-sumo-cross test-sumo-unit test-airhockey-cross test-jnb-cross benchmark check-lisp
+.PHONY: all lisp-bomberman lisp-sumo lisp-airhockey lisp-jumpnbump gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-sumo-cross test-sumo-unit test-airhockey-cross test-airhockey-prediction test-jnb-cross test-fixed-point test-unit test-respawn test-bomb-mechanics test-stress benchmark check-lisp
 
 all: lisp-bomberman gateway
 
@@ -35,7 +35,7 @@ lisp-jumpnbump:
 		 --eval "(ql:quickload :foldback)" \
 		 --eval "(foldback:start-server :game-id \"jumpnbump\" :simulation-fn #'foldback:jnb-update :serialization-fn #'foldback:jnb-serialize :join-fn #'foldback:jnb-join :initial-custom-state (fset:map (:seed 123)))"
 
-test: test-lisp test-gateway test-bomberman-cross test-sumo-unit test-sumo-cross test-airhockey-cross test-jnb-cross
+test: test-lisp test-gateway test-bomberman-cross test-sumo-unit test-sumo-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross
 
 test-lisp:
 	sbcl --non-interactive \
@@ -83,6 +83,13 @@ test-airhockey-cross:
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/airhockey-cross-test.lisp
 
+test-airhockey-prediction:
+	@echo "--- Running Air Hockey Late-Input Rollback Test (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/airhockey-prediction-test.lisp
+
 test-jnb-cross:
 	@echo "--- Running Jump and Bump Cross-Platform Tests (JS) ---"
 	node tests/jumpnbump-cross-test.js
@@ -91,6 +98,49 @@ test-jnb-cross:
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/jumpnbump-cross-test.lisp
+
+test-fixed-point:
+	@echo "--- Running Fixed-Point Cross-Platform Tests (JS) ---"
+	node tests/fixed-point-cross-test.js
+	@echo "\n--- Running Fixed-Point Cross-Platform Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/fixed-point-cross-test.lisp
+
+test-unit:
+	@echo "--- Running Granular Unit Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/unit-tests.lisp
+
+test-respawn:
+	@echo "--- Running Respawn Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/respawn-test.lisp
+
+test-bomb-mechanics:
+	@echo "--- Running Bomb Mechanics Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/bomb-mechanics-test.lisp
+
+test-stress:
+	@echo "--- Running Stress Test ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/stress-test.lisp
+
+test-e2e:
+	@echo "--- Running Playwright E2E Tests (all games) ---"
+	bash tests/run-e2e.sh
+
+test-all: test-lisp test-gateway test-fixed-point test-unit test-respawn test-bomb-mechanics test-bomberman-cross test-sumo-unit test-sumo-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-stress test-e2e
 
 benchmark:
 	sbcl --non-interactive \

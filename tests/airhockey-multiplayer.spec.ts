@@ -17,9 +17,9 @@ async function testAirHockeyMultiplayer(browser, protocol) {
   await expect(page1.locator('#netStats')).toContainText('Tick:', { timeout: 15000 });
   await expect(page2.locator('#netStats')).toContainText('Tick:', { timeout: 15000 });
 
-  // Game should become ACTIVE
-  await expect(page1.locator('#netStats')).toContainText('Status: ACTIVE', { timeout: 15000 });
-  await expect(page2.locator('#netStats')).toContainText('Status: ACTIVE', { timeout: 15000 });
+  // Game should become ACTIVE (server needs a tick after both players join)
+  await expect(page1.locator('#netStats')).toContainText('Status: ACTIVE', { timeout: 20000 });
+  await expect(page2.locator('#netStats')).toContainText('Status: ACTIVE', { timeout: 20000 });
 
   await context1.close();
   await context2.close();

@@ -14,6 +14,9 @@ export function fpRound(n) {
 }
 
 export function fpFromFloat(f) {
+    if (isNaN(f)) {
+        return 0;
+    }
     return fpRound(f * FP_SCALE);
 }
 

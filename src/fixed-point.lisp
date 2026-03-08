@@ -47,7 +47,9 @@
 
 ;; For square root in fixed point, we'll use a simple integer sqrt or 
 (defun fp-sqrt (a)
-  (fp-from-float (sqrt (fp-to-float a))))
+  (if (< a 0)
+      0
+      (fp-from-float (sqrt (fp-to-float a)))))
 
 (defun fp-length (x y)
   (fp-sqrt (fp-dot x y x y)))

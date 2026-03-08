@@ -62,6 +62,15 @@ function generateTableSegments() {
 
 export const AH_SEGMENTS = generateTableSegments();
 
+function airhockeyResetPositions(state, players, newTick) {
+    let resetPlayers = {};
+    for (let pid in players) {
+        let ny = (parseInt(pid) === 0) ? -4000 : 4000;
+        resetPlayers[pid] = { ...players[pid], x: 0, y: ny };
+    }
+    return { ...state, tick: newTick, players: resetPlayers, puck: { x: 0, y: 0, vx: 0, vy: 0 } };
+}
+
 export function airhockeyUpdate(state, inputs) {
     let nextTick = state.tick + 1;
     let nextPlayers = { ...state.players };
@@ -141,6 +150,22 @@ export function airhockeyUpdate(state, inputs) {
                     let dot = fpAdd(fpMul(pvx, nx), fpMul(pvy, ny));
                     pvx = fpMul(fpSub(pvx, fpMul(fpMul(2000, nx), dot)), AH_BOUNCE);
                     pvy = fpMul(fpSub(pvy, fpMul(fpMul(2000, ny), dot)), AH_BOUNCE);
+                } else if (seg.type === 'goal-top') {
+                    // Puck entered Player 0's goal — Player 1 scores
+                    nextPlayers[1] = { ...nextPlayers[1], sc: (nextPlayers[1].sc || 0) + 1 };
+                    if (nextPlayers[1].sc >= AH_MAX_SCORE) {
+                        nextStatus = 'p1-wins';
+                    } else {
+                        return airhockeyResetPositions(state, nextPlayers, nextTick);
+                    }
+                } else if (seg.type === 'goal-bottom') {
+                    // Puck entered Player 1's goal — Player 0 scores
+                    nextPlayers[0] = { ...nextPlayers[0], sc: (nextPlayers[0].sc || 0) + 1 };
+                    if (nextPlayers[0].sc >= AH_MAX_SCORE) {
+                        nextStatus = 'p0-wins';
+                    } else {
+                        return airhockeyResetPositions(state, nextPlayers, nextTick);
+                    }
                 }
             }
         }
@@ -179,7 +204,7 @@ export function airhockeySync(localState, serverState, myPlayerId) {
     }
 }
 
-export function airhockeyRender(ctx, canvas, localState, TILE_SIZE, myPlayerId) {
+export function airhockeyRender(ctx, canvas, localState, TILE_SIZE, myPlayerId, msPerTick = 16.6) {
     const centerX = canvas.width / 2, centerY = canvas.height / 2;
     const margin = 1.1;
     const unitsW = (AH_TABLE_WIDTH / 1000) * margin, unitsH = (AH_TABLE_HEIGHT / 1000) * margin;
@@ -216,7 +241,7 @@ export function airhockeyRender(ctx, canvas, localState, TILE_SIZE, myPlayerId) 
     ctx.lineTo(centerX + (AH_TABLE_WIDTH/2000) * renderScale, centerY);
     ctx.stroke();
 
-    const now = Date.now(), lerpFactor = Math.min(1.0, (now - lastSyncTime) / 16.6);
+    const now = Date.now(), lerpFactor = Math.min(1.0, (now - lastSyncTime) / msPerTick);
 
     for (let id in localState.players) {
         let p = localState.players[id];

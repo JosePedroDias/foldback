@@ -37,14 +37,14 @@ Jump and Bump is a classic side-scrolling multiplayer platformer deathmatch. Pla
 ## Visuals
 - **Pixel Art**: Rendered in a 400x256 resolution using nearest-neighbor scaling (`image-rendering: pixelated`).
 - **Assets**: 
-    - `jumpbump.jpg`: The iconic original background.
-    - `jumpnbump.png`: Sprite sheet containing bunny animations.
+    - `gateway/jumpnbump/gfx/bg.gif`: The iconic original background.
+    - `gateway/jumpnbump/gfx/rabbit.gif`: Sprite sheet containing bunny animations.
 
 ## Technical Implementation
 - **Lisp (Server)**:
-    - `src/jumpnbump.lisp`: Pure functional simulation including gravity, collision, and squish logic.
+    - `src/games/jumpnbump.lisp`: Pure functional simulation including gravity, collision, and squish logic.
 - **JavaScript (Client)**:
-    - `gateway/jumpnbump-logic.js`: Mirrored logic for zero-latency Client-Side Prediction (CSP).
+    - `gateway/jumpnbump/logic.js`: Mirrored logic for zero-latency Client-Side Prediction (CSP).
 - **Determinism**: 
     - All physics calculations use fixed-point arithmetic to prevent floating-point drift between Lisp (SBCL) and JavaScript (V8).
     - Shared PRNG seed ensures spawn positions are identical on all clients.

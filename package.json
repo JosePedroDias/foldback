@@ -8,14 +8,14 @@
   },
   "scripts": {
     "test": "playwright test",
-    "test:multiplayer": "playwright test tests/bomberman-multiplayer.spec.ts"
+    "test:multiplayer": "playwright test tests/bomberman-multiplayer.spec.ts",
+    "test:fp-cross": "sbcl --non-interactive --load foldback.asd --eval '(asdf:load-system :foldback :force t)' --load tests/fixed-point-cross-test.lisp --eval '(foldback::run-fixed-point-cross-tests)' --eval '(quit)' && node tests/fixed-point-cross-test.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@playwright/test": "^1.58.2",
-    "playwright": "^1.58.2"
+    "@playwright/test": "^1.58.2"
   }
 }

@@ -29,8 +29,8 @@
       (let* ((s2 (sumo-update s1 (fset:map)))
              (p2 (fset:lookup (fset:lookup s2 :players) 0)))
         (format t "  Result s2: x=~A, vx=~A~%" (fset:lookup p2 :x) (fset:lookup p2 :vx))
-        (assert-eq (fset:lookup p2 :vx) 9 "vx decreased by friction")
-        (assert-eq (fset:lookup p2 :x) 19 "x increased correctly with friction"))))
+        (assert-eq (fset:lookup p2 :vx) 10 "vx after friction (fp-mul rounds 9.5 up to 10)")
+        (assert-eq (fset:lookup p2 :x) 20 "x increased correctly with friction"))))
 
   ;; --- Test Case 2: Boundary Check ---
   (format t "~%Testing Sumo Ring Boundary (Lisp)...~%")

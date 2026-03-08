@@ -39,7 +39,7 @@ Sumo is a physics-based multiplayer game where players control circular avatars 
     - If `p2.y > p1.y`, `p1` receives `-push-force` to its `vy`.
 
 ## Technical Implementation
-- **Lisp (Server)**: `src/sumo.lisp`
-- **JavaScript (Client)**: `gateway/sumo-logic.js`
+- **Lisp (Server)**: `src/games/sumo.lisp`
+- **JavaScript (Client)**: `gateway/sumo/logic.js`
 - **Synchronization**: The game uses a tick-based state synchronization. The server sends authoritative state deltas to clients.
 - **Cross-Platform**: Logic is mirrored between Lisp and JS to allow for client-side prediction and server-side validation.

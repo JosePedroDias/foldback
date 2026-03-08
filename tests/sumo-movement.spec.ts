@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
 
-test('Sumo: Player movement via keyboard (WebRTC)', async ({ browser }) => {
+test('Sumo: Player movement via keyboard', async ({ browser }) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   
   // Connect via WebRTC
-  await page.goto('http://localhost:8080/sumo/?protocol=webrtc');
+  await page.goto('http://localhost:8080/sumo/?protocol=websockets');
   
   // Wait for ID and connection
   await expect(page.locator('#netStats')).toContainText('ID:', { timeout: 15000 });

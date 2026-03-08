@@ -9,14 +9,15 @@
 (defvar *current-metrics* (make-metrics))
 (defvar *next-player-id* 0)
 
-(defun start-server (&key (port 4444) 
-                          (delta t) 
+(defun start-server (&key (port 4444)
+                          (delta t)
                           (game-id nil)
                           (simulation-fn nil)
                           (serialization-fn nil)
                           (join-fn nil)
                           (initial-custom-state (fset:map))
-                          (max-ticks nil))
+                          (max-ticks nil)
+                          (tick-rate 60))
   "Start the FoldBack UDP Server."
   (unless game-id (error "START-SERVER: :GAME-ID is required."))
   (unless simulation-fn (error "START-SERVER: :SIMULATION-FN is required."))
@@ -32,7 +33,7 @@
          (clients (fset:map)) 
          (last-client-states (fset:map))
          (client-last-seen (fset:map))
-         (tick-rate (/ 1.0 60.0)))
+         (tick-interval (/ 1.0 tick-rate)))
     (setf *current-metrics* (make-metrics))
     (cl:format t "FoldBack Engine Started [Game: ~A] on port ~A~%" game-id port)
     (finish-output)
@@ -64,7 +65,7 @@
                                (finish-output)
                                (setf clients (fset:with clients client-key pid))
                                
-                               (let ((welcome (cl:format nil "{\"your_id\":~A,\"game_id\":\"~A\"}" pid game-id)))
+                               (let ((welcome (cl:format nil "{\"your_id\":~A,\"game_id\":\"~A\",\"tick_rate\":~A}" pid game-id tick-rate)))
                                  (usocket:socket-send socket welcome (length welcome) :host remote-host :port remote-port))
 
                                (setf (world-history world)
@@ -159,6 +160,6 @@
                 ;; 5. Accurate Sleep
                 (let* ((end-time (get-internal-real-time))
                        (elapsed (/ (- end-time start-tick-time) internal-time-units-per-second)))
-                  (when (< elapsed tick-rate)
-                    (sleep (- tick-rate elapsed)))))))
+                  (when (< elapsed tick-interval)
+                    (sleep (- tick-interval elapsed)))))))
       (usocket:socket-close socket))))

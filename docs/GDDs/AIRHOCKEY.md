@@ -41,7 +41,7 @@ Air Hockey is a 2-player competitive arcade game where players use paddles to hi
 ## Technical Implementation
 - **Lisp (Server)**:
   - Handles the authoritative fixed-point physics simulation, state management, and score tracking.
-- **JavaScript (Client)**:
+- **JavaScript (Client)**: `gateway/airhockey/logic.js`
   - Mirrors the Lisp fixed-point physics engine for accurate client-side prediction.
   - Visuals are drawn using the HTML5 Canvas API.
   - Input translates pointer coordinates (`mousemove`, `touchmove`) into fixed-point targets sent to the server.
