@@ -1,44 +1,58 @@
 import { FoldBackWorld, processServerMessage } from '../foldback-engine.js';
-import { sumoUpdate, sumoApplyDelta, sumoSync, sumoRender } from './logic.js';
+import { fpRound } from '../fixed-point.js';
+import { pongUpdate, pongApplyDelta, pongSync, pongRender } from './logic.js';
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const TILE_SIZE = 20; 
+
+window.foldback_test_state = {
+    clientState: null,
+    serverState: null,
+    lastInputSent: null,
+    lastRollback: null,
+    totalRollbacks: 0,
+};
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
 
 const urlParams = new URLSearchParams(window.location.search);
 const protocol = urlParams.get('protocol') || 'webrtc';
 
-const world = new FoldBackWorld("sumo");
-world.reconciliationThresholdSq = 1; // Any integer difference in FP triggers rollback
-window.world = world; // Expose for testing
-
-let connection = { send: (data) => {}, isOpen: () => false };
+const world = new FoldBackWorld("pong");
+window.world = world;
+world.reconciliationThresholdSq = 1;
+let connection = { send: () => {}, isOpen: () => false };
+let mouseY = 0;
 
 function onMessage(data) {
-    const res = processServerMessage(world, data, sumoUpdate, sumoApplyDelta, sumoSync);
-    
+    const res = processServerMessage(world, data, pongUpdate, pongApplyDelta, pongSync);
+
+    window.foldback_test_state.serverState = world.authoritativeState;
+    window.foldback_test_state.totalRollbacks = world.totalRollbacks;
+
     if (res.type === 'abort') {
         alert("Game ID Mismatch!");
         return;
     }
-    
+
     if (res.tick !== undefined) {
         const ahead = world.currentTick - res.tick;
-        const pCount = Object.keys(world.localState.players).length;
-        document.getElementById('netStats').innerText = 
-            `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}) | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks} | Players: ${pCount}`;
+        document.getElementById('netStats').innerText =
+            `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}) | Status: ${world.localState.status} | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks}`;
     }
 }
 
 function renderLoop() {
-    sumoRender(ctx, canvas, world.localState, TILE_SIZE, world.myPlayerId);
+    window.foldback_test_state.clientState = world.localState;
+    pongRender(ctx, canvas, world.localState, 0, world.myPlayerId, world.msPerTick);
     requestAnimationFrame(renderLoop);
 }
 requestAnimationFrame(renderLoop);
-
-const keys = new Set();
-window.addEventListener('keydown', (e) => { keys.add(e.key.toLowerCase()); });
-window.addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); });
 
 function sendInput() {
     if (connection.isOpen() && world.myPlayerId !== null) {
@@ -46,24 +60,26 @@ function sendInput() {
         const lead = world.currentTick - serverTick;
 
         if (lead < world.maxLead) {
-            let dx = 0, dy = 0;
-            if (keys.has('arrowleft') || keys.has('a')) dx = -1;
-            if (keys.has('arrowright') || keys.has('d')) dx = 1;
-            if (keys.has('arrowup') || keys.has('w')) dy = -1;
-            if (keys.has('arrowdown') || keys.has('s')) dy = 1;
-            
+            const centerY = canvas.height / 2;
+            const margin = 1.15;
+            const unitsH = (8000 / 1000) * margin;
+            const renderScale = Math.min(canvas.width / ((12000 / 1000) * margin), canvas.height / unitsH);
+            const ty = fpRound(((mouseY - centerY) / renderScale) * 1000);
+
             const nextTick = world.currentTick + 1;
-            const input = { dx, dy, t: nextTick };
-            
-            connection.send(`(:dx ${dx} :dy ${dy} :t ${nextTick})`);
-            
+            const input = { ty, t: nextTick };
+
+            connection.send(`(:ty ${ty} :t ${nextTick})`);
+
+            window.foldback_test_state.lastInputSent = { input, tick: nextTick };
+
             if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
             world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
-            
+
             const inputsForTick = {};
             inputsForTick[world.myPlayerId] = input;
-            
-            world.localState = sumoUpdate(world.localState, inputsForTick);
+
+            world.localState = pongUpdate(world.localState, inputsForTick);
             world.currentTick = nextTick;
             world.history.set(nextTick, JSON.parse(JSON.stringify(world.localState)));
         }
@@ -79,8 +95,11 @@ function sendInput() {
     setTimeout(sendInput, world.msPerTick);
 }
 
+canvas.addEventListener('mousemove', (e) => { mouseY = e.clientY; });
+
 function onOpen() {
     console.log(`${protocol} Open!`);
+    document.getElementById('netStats').innerText = "Connected! Waiting for ID...";
     connection.send("()");
     const joinRetry = setInterval(() => {
         if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }

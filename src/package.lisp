@@ -35,12 +35,11 @@
            #:update-bombs
            #:update-bots
            
-           ;; Sumo Game Logic
-           #:make-sumo-player
-           #:sumo-join
-           #:sumo-update
-           #:sumo-serialize
-           
+           ;; Pong Game Logic
+           #:pong-join
+           #:pong-update
+           #:pong-serialize
+
            ;; Fixed-Point Math
            #:fp-round
            #:fp-from-float

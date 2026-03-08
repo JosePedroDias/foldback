@@ -100,14 +100,12 @@ run_game_tests "Air Hockey" \
 
 cleanup
 
-# ── Sumo ──
-start_servers "sumo" \
-    "(foldback:start-server :game-id \"sumo\" :simulation-fn #'foldback:sumo-update :serialization-fn #'foldback:sumo-serialize :join-fn #'foldback:sumo-join)"
+# ── Pong ──
+start_servers "pong" \
+    "(foldback:start-server :game-id \"pong\" :simulation-fn #'foldback:pong-update :serialization-fn #'foldback:pong-serialize :join-fn #'foldback:pong-join)"
 
-run_game_tests "Sumo" \
-    tests/sumo-multiplayer.spec.ts \
-    tests/sumo-movement.spec.ts \
-    tests/sumo-interpolation.spec.ts || true
+run_game_tests "Pong" \
+    tests/pong-multiplayer.spec.ts || true
 
 cleanup
 

@@ -17,7 +17,7 @@ The gateway is a dumb proxy — it does not run game logic. It bridges browser p
   - `src/engine.lisp` — Core engine (state management, rollback)
   - `src/fixed-point.lisp` — Fixed-point arithmetic (scale 1000)
   - `src/physics.lisp` — Collision detection, circle push, segment math
-  - `src/games/` — Per-game Lisp logic (airhockey, bomberman, jumpnbump, sumo)
+  - `src/games/` — Per-game Lisp logic (pong, airhockey, bomberman, jumpnbump)
 - `gateway/` — Go proxy + JS client code
   - `gateway/main.go` — Go WebSocket/WebRTC → UDP proxy
   - `gateway/foldback-engine.js` — Client-side prediction engine (shared by all games)

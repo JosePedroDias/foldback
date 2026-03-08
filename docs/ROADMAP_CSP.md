@@ -1,7 +1,7 @@
 # Road to Client-Side Prediction (CSP) with Rollback - STATUS UPDATE
 
 ## ✅ Phase 1-3: Core CSP & Reconciliation (COMPLETED)
-- **Deterministic Simulation**: All 4 games (Air Hockey, Bomberman, Sumo, Jump'n'Bump) ported to both Lisp and JS.
+- **Deterministic Simulation**: All games (Pong, Air Hockey, Bomberman, Jump'n'Bump) ported to both Lisp and JS.
 - **Input Tagging**: Client sends predicted `:t` (tick) with inputs.
 - **Server Rollback**: Server rewinds history to apply late packets (verified via `late-input-test.lisp`).
 - **Client Rollback**: Client detects divergence > 0.1 units and triggers `rollbackAndResimulate`.
@@ -18,7 +18,7 @@
   - Render them at `CurrentTime - 100ms`, interpolating linearly between the two surrounding known positions.
 - **Status**:
   - ✅ Air Hockey: Interpolation implemented in `airhockeyRender()` — lerps remote players and puck between `lastServerState` and `currentServerState` using a time-based factor.
-  - ❌ Bomberman, Sumo, Jump'n'Bump: No interpolation yet.
+  - ❌ Bomberman, Jump'n'Bump: No interpolation yet.
 - **Next**: Extract interpolation into `foldback-engine.js` as a shared utility so all games benefit without duplicating code.
 
 ---
@@ -44,10 +44,10 @@
 - [x] Add `tick` to client input JSON.
 - [ ] Add per-player `ack_seq` to server delta JSON.
 - [x] Implement `inputBuffer` on client.
-- [x] Port all 4 games to JS (bomberman, airhockey, sumo, jnb).
+- [x] Port all games to JS (pong, bomberman, airhockey, jnb).
 - [x] Implement the "Rewind & Replay" loop in the client `onMessage` handler.
 - [x] RTT-based client lead limiting.
-- [~] Implement linear interpolation for remote entities (Air Hockey only).
+- [~] Implement linear interpolation for remote entities (Air Hockey, Pong).
 - [ ] Extract interpolation into shared engine code.
 - [ ] Configurable tick rate.
-- [ ] Tutorial example game.
+- [x] Tutorial example game (Pong).

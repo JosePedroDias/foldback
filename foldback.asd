@@ -14,8 +14,8 @@
                  (:module "games"
                   :components
                   ((:file "bomberman")
-                   (:file "sumo")
                    (:file "airhockey")
-                   (:file "jumpnbump")))
+                   (:file "jumpnbump")
+                   (:file "pong")))
                  (:file "engine")
                  (:file "server")))))

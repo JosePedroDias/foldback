@@ -17,7 +17,7 @@ For each game, we run identical scenarios in both Lisp and JavaScript and assert
 We simulate complete multi-player tick sequences purely within Lisp, including artificial latency (late-arriving inputs). These establish what the authoritative state *should* be after rollback and resimulation.
 
 ### 2.3. Playwright End-to-End Tests (Real-World Validation)
-We launch multiple browser clients and verify the real-world player experience. Instead of parsing frame-by-frame console logs, we poll `window.world` and `window.foldbackStats` for observable state changes (rollback count, player positions, game status). This is the existing pattern used by `prediction.spec.ts` and `sumo-interpolation.spec.ts`.
+We launch multiple browser clients and verify the real-world player experience. Instead of parsing frame-by-frame console logs, we poll `window.world` and `window.foldbackStats` for observable state changes (rollback count, player positions, game status). This is the existing pattern used by `prediction.spec.ts`.
 
 ## 3. Implementation Plan
 

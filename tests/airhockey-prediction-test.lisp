@@ -13,8 +13,8 @@
    arrived on time."
   (format t "~%Testing Air Hockey Late-Input Server Rollback...~%")
 
-  (let* ((p0 (make-ah-player 0 0 -4000))
-         (p1 (make-ah-player 1 0 4000))
+  (let* ((p0 (make-ah-player 0 0 0 -4000))
+         (p1 (make-ah-player 1 1 0 4000))
          (s0 (map (:tick 0)
                   (:players (map (0 p0) (1 p1)))
                   (:puck (make-ah-puck 0 0))

@@ -1,4 +1,4 @@
-.PHONY: all lisp-bomberman lisp-sumo lisp-airhockey lisp-jumpnbump gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-sumo-cross test-sumo-unit test-airhockey-cross test-airhockey-prediction test-jnb-cross test-fixed-point test-unit test-respawn test-bomb-mechanics test-stress benchmark check-lisp check-parens
+.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-fixed-point test-unit test-respawn test-bomb-mechanics test-stress benchmark check-lisp check-parens
 
 all: lisp-bomberman gateway
 
@@ -23,11 +23,6 @@ lisp-bomberman:
 		 --eval "(ql:quickload :foldback)" \
 		 --eval "(let* ((level (foldback:make-bomberman-map)) (bots (foldback:spawn-bots level 3))) (foldback:start-server :game-id \"bomberman\" :simulation-fn #'foldback:bomberman-update :serialization-fn #'foldback:bomberman-serialize :join-fn #'foldback:bomberman-join :initial-custom-state (fset:map (:level level) (:bots bots) (:seed 123))))"
 
-lisp-sumo:
-	sbcl --load foldback.asd \
-		 --eval "(ql:quickload :foldback)" \
-		 --eval "(foldback:start-server :game-id \"sumo\" :simulation-fn #'foldback:sumo-update :serialization-fn #'foldback:sumo-serialize :join-fn #'foldback:sumo-join)"
-
 lisp-airhockey:
 	sbcl --load foldback.asd \
 		 --eval "(ql:quickload :foldback)" \
@@ -38,7 +33,12 @@ lisp-jumpnbump:
 		 --eval "(ql:quickload :foldback)" \
 		 --eval "(foldback:start-server :game-id \"jumpnbump\" :simulation-fn #'foldback:jnb-update :serialization-fn #'foldback:jnb-serialize :join-fn #'foldback:jnb-join :initial-custom-state (fset:map (:seed 123)))"
 
-test: test-lisp test-gateway test-bomberman-cross test-sumo-unit test-sumo-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross
+lisp-pong:
+	sbcl --load foldback.asd \
+		 --eval "(ql:quickload :foldback)" \
+		 --eval "(foldback:start-server :game-id \"pong\" :simulation-fn #'foldback:pong-update :serialization-fn #'foldback:pong-serialize :join-fn #'foldback:pong-join)"
+
+test: test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross
 
 test-lisp:
 	sbcl --non-interactive \
@@ -60,22 +60,6 @@ test-bomberman-cross:
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/bomberman-cross-test.lisp
-
-test-sumo-unit:
-	@echo "--- Running Sumo Core Unit Tests (Lisp) ---"
-	sbcl --non-interactive \
-		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
-		 --eval "(ql:quickload :foldback)" \
-		 --load tests/sumo-unit-tests.lisp
-
-test-sumo-cross:
-	@echo "--- Running Sumo Cross-Platform Tests (JS) ---"
-	node tests/sumo-cross-test.js
-	@echo "\n--- Running Sumo Cross-Platform Tests (Lisp) ---"
-	sbcl --non-interactive \
-		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
-		 --eval "(ql:quickload :foldback)" \
-		 --load tests/sumo-cross-test.lisp
 
 test-airhockey-cross:
 	@echo "--- Running Air Hockey Cross-Platform Tests (JS) ---"
@@ -101,6 +85,15 @@ test-jnb-cross:
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/jumpnbump-cross-test.lisp
+
+test-pong-cross:
+	@echo "--- Running Pong Cross-Platform Tests (JS) ---"
+	node tests/pong-cross-test.js
+	@echo "\n--- Running Pong Cross-Platform Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/pong-cross-test.lisp
 
 test-fixed-point:
 	@echo "--- Running Fixed-Point Cross-Platform Tests (JS) ---"
@@ -143,7 +136,7 @@ test-e2e:
 	@echo "--- Running Playwright E2E Tests (all games) ---"
 	bash tests/run-e2e.sh
 
-test-all: test-lisp test-gateway test-fixed-point test-unit test-respawn test-bomb-mechanics test-bomberman-cross test-sumo-unit test-sumo-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-stress test-e2e
+test-all: test-lisp test-gateway test-fixed-point test-unit test-respawn test-bomb-mechanics test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-stress test-e2e
 
 benchmark:
 	sbcl --non-interactive \
