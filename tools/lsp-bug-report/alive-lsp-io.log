@@ -1,0 +1,7 @@
+[23:08:44.551649075] === WRAPPER STARTED ===
+[23:08:44.551669635] PWD=/home/jsad/Personal/foldback
+[23:08:44.551678645] argv=['tools/alive-stdio-debug.py']
+[23:08:44.551683615] stdin O_NONBLOCK was False, forced to blocking
+[23:08:44.551984408] sbcl started, PID=19160
+[23:08:44.552162709] STDIN: 175 bytes: b'Content-Length: 152\r\n\r\n{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"processId": null, "capabilities": {}, "rootUri": "file:///home/jsad/Personal/foldback"}}'
+[23:08:44.854802792] STDOUT: 678 bytes: b'Content-Length: 655\r\n\r\n{"id":1,"jsonrpc":"2.0","result":{"capabilities":{"signatureHelpProvider":{"triggerCharacters":[" "]},"textDocumentSync":1,"hoverProvider":null,"semanticTokensProvider":{"legend'

@@ -1,10 +1,16 @@
-.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-fixed-point test-unit test-respawn test-bomb-mechanics test-stress benchmark check-lisp check-parens
+.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-fixed-point test-unit test-respawn test-bomb-mechanics test-stress benchmark check-lisp check-parens alive-lsp
 
 all: lisp-bomberman gateway
 
 setup:
 	sbcl --eval "(ql:quickload :fset)" --eval "(ql:quickload :usocket)" --quit
 	cd gateway && go mod download
+
+alive-lsp: build-lsp-client
+	sbcl --script tools/alive-tcp-server.lisp
+
+build-lsp-client:
+	cd tools/lsp-client && go build -o lsp-client .
 
 check-parens:
 	go run scripts/check-parens.go src/*.lisp src/games/*.lisp
