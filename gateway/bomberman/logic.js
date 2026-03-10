@@ -287,7 +287,11 @@ export function bombermanUpdate(state, inputs) {
 export function bombermanApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
     newState.tick = delta.t;
-    if (delta.p) delta.p.forEach(dp => { newState.players[dp.id] = dp; });
+    if (delta.p) {
+        const newPlayers = {};
+        delta.p.forEach(dp => { newPlayers[dp.id] = dp; });
+        newState.players = newPlayers;
+    }
     if (delta.l) newState.customState.level = delta.l;
     if (delta.s !== undefined) newState.customState.seed = delta.s;
     if (delta.b) {

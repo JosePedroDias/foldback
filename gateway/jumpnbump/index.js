@@ -1,5 +1,6 @@
 import { FoldBackWorld, processServerMessage } from '../foldback-engine.js';
-import { jnbUpdate, jnbApplyDelta, jnbSync, jnbRender, loadJnbAssets } from './logic.js';
+import { jnbUpdate, jnbApplyDelta, jnbSync, jnbRender, loadJnbAssets, spawnBlood } from './logic.js';
+import { fpToFloat } from '../fixed-point.js';
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -30,32 +31,48 @@ function playSound(name) {
     }
 }
 
-let lastStates = new Map(); // pid -> { h, og } for sound triggers
+// Death detection — must run at simulation rate (per-tick), not render rate,
+// because JNB respawns instantly (1 tick dead). Render can miss the transition.
+const lastDeathTime = new Map(); // pid -> Date.now() when blood last spawned
+function checkDeaths(before, after) {
+    for (let id in after) {
+        const bp = before[id];
+        const ap = after[id];
+        if (bp && ap && bp.h > 0 && ap.h <= 0) {
+            const now = Date.now();
+            if (now - (lastDeathTime.get(id) || 0) > 500) {
+                lastDeathTime.set(id, now);
+                spawnBlood(fpToFloat(bp.x), fpToFloat(bp.y));
+                playSound('pop');
+            }
+        }
+    }
+}
+
+function snapshotHealth(players) {
+    const snap = {};
+    for (let id in players) {
+        const p = players[id];
+        snap[id] = { h: p.h, x: p.x, y: p.y };
+    }
+    return snap;
+}
 
 function onMessage(data) {
+    const before = snapshotHealth(world.localState.players);
     const res = processServerMessage(world, data, jnbUpdate, jnbApplyDelta, jnbSync);
-    
+
     if (res.type === 'abort') {
         alert("Game ID Mismatch!");
         return;
     }
-    
+
     if (res.tick !== undefined) {
+        checkDeaths(before, world.localState.players);
         const ahead = world.currentTick - res.tick;
         const pCount = Object.keys(world.localState.players).length;
-        document.getElementById('netStats').innerText = 
+        document.getElementById('netStats').innerText =
             `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}) | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks} | Players: ${pCount}`;
-
-        // Sound Triggers
-        for (let id in world.localState.players) {
-            const p = world.localState.players[id];
-            const last = lastStates.get(id);
-            if (last) {
-                if (p.h <= 0 && last.h > 0) playSound('pop');
-                if (!p.og && last.og && p.vy < -1000) playSound('jump');
-            }
-            lastStates.set(id, { h: p.h, og: p.og });
-        }
     }
 }
 
@@ -72,7 +89,14 @@ async function init() {
     }
 }
 
+let prevRenderState = new Map(); // for jump sounds (og transition lasts many ticks, safe in render)
 function render() {
+    for (let id in world.localState.players) {
+        const p = world.localState.players[id];
+        const prev = prevRenderState.get(id);
+        if (prev && !p.og && prev.og && p.vy < -1000) playSound('jump');
+        prevRenderState.set(id, { og: p.og });
+    }
     jnbRender(ctx, canvas, world.localState, TILE_SIZE, world.msPerTick);
     requestAnimationFrame(render);
 }
@@ -97,7 +121,9 @@ function sendInput() {
             if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
             world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
             
+            const beforePrediction = snapshotHealth(world.localState.players);
             world.localState = jnbUpdate(world.localState, inputsForTick);
+            checkDeaths(beforePrediction, world.localState.players);
             world.currentTick = nextTick;
             world.history.set(nextTick, JSON.parse(JSON.stringify(world.localState)));
         }

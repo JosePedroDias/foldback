@@ -76,7 +76,7 @@ export function jnbUpdate(state, inputs) {
             let randX, randY, rDir;
             [seed, randX, randY] = randomJnbSpawn(seed);
             [seed, rDir] = fbRandInt(seed, 2);
-            nextPlayers[pid] = { id: Number(pid), x: randX, y: randY, vx: 0, vy: 0, h: 100, d: rDir, og: false };
+            nextPlayers[pid] = { id: Number(pid), x: randX, y: randY, vx: 0, vy: 0, h: 100, d: rDir, og: false, k: p.k || 0 };
             continue;
         }
 
@@ -147,7 +147,7 @@ export function jnbUpdate(state, inputs) {
                                    p2.x, p2.y, JNB_PLAYER_SIZE, JNB_PLAYER_SIZE)) {
                     if (p1.vy > 0 && p1.y < p2.y) {
                         nextPlayers[id2] = { ...p2, h: 0 };
-                        nextPlayers[id1] = { ...p1, vy: JNB_JUMP_FORCE };
+                        nextPlayers[id1] = { ...p1, vy: JNB_JUMP_FORCE, k: (p1.k || 0) + 1 };
                     }
                 }
             }
@@ -166,8 +166,10 @@ export function jnbApplyDelta(baseState, delta) {
     newState.tick = delta.t;
     if (delta.s !== undefined) newState.customState.seed = delta.s;
     if (delta.p) {
+        // Replace players entirely from server — ensures left players are removed
+        const newPlayers = {};
         delta.p.forEach(dp => {
-            newState.players[dp.id] = {
+            newPlayers[dp.id] = {
                 id: dp.id,
                 x: dp.x,
                 y: dp.y,
@@ -175,9 +177,11 @@ export function jnbApplyDelta(baseState, delta) {
                 vy: dp.vy,
                 h: dp.h,
                 d: dp.d,
-                og: dp.og === 1
+                og: dp.og === 1,
+                k: dp.k || 0
             };
         });
+        newState.players = newPlayers;
     }
     return newState;
 }
@@ -187,11 +191,6 @@ export function jnbSync(localState, serverState, myPlayerId) {
         const sp = serverState.players[id];
         const lp = localState.players[id];
 
-        // Trigger blood if health drops to 0
-        if (lp && lp.h > 0 && sp.h <= 0) {
-            spawnBlood(fpToFloat(lp.x), fpToFloat(lp.y));
-        }
-
         if (id != myPlayerId) {
             localState.players[id] = sp;
         } else {
@@ -199,6 +198,7 @@ export function jnbSync(localState, serverState, myPlayerId) {
                 lp.h = sp.h;
                 lp.d = sp.d;
                 lp.og = sp.og;
+                lp.k = sp.k;
             } else {
                 localState.players[id] = sp;
             }
@@ -306,6 +306,24 @@ export function jnbRender(ctx, canvas, localState, TILE_SIZE, msPerTick = 16.6) 
             ctx.drawImage(spritesheet, sx, sy, sw, sh, px + hx, py + hy, sw, sh);
         }
     }
+
+    // Render Scores on right-side scoreboard
+    const scoreSlotY = [47, 111, 175, 239];
+    const scoreX = 373;
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    for (let id in localState.players) {
+        const p = localState.players[id];
+        const slot = p.id % 4;
+        const y = scoreSlotY[slot];
+        // Cover baked-in "00"
+        ctx.fillStyle = '#3b3b4a';
+        ctx.fillRect(scoreX - 10, y - 8, 20, 10);
+        // Draw kill count
+        ctx.fillStyle = '#ffcc00';
+        ctx.fillText(String(p.k || 0), scoreX, y);
+    }
+    ctx.textAlign = 'start';
 
     // Render Particles
     if (objectSheet.complete) {

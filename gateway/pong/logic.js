@@ -171,7 +171,9 @@ export function pongApplyDelta(baseState, delta) {
     newState.status = delta.s;
     if (delta.bl) newState.ball = delta.bl;
     if (delta.p) {
-        delta.p.forEach(dp => { newState.players[dp.id] = dp; });
+        const newPlayers = {};
+        delta.p.forEach(dp => { newPlayers[dp.id] = dp; });
+        newState.players = newPlayers;
     }
     return newState;
 }

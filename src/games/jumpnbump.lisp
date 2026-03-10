@@ -39,8 +39,8 @@
 
 ;; --- Jump and Bump State ---
 
-(defun make-jnb-player (&key (id 0) (x 0) (y 0) (vx 0) (vy 0) (h 100) (dir 0) (on-ground nil))
-  (fset:map (:id id) (:x x) (:y y) (:vx vx) (:vy vy) (:h h) (:dir dir) (:on-ground on-ground)))
+(defun make-jnb-player (&key (id 0) (x 0) (y 0) (vx 0) (vy 0) (h 100) (dir 0) (on-ground nil) (k 0))
+  (fset:map (:id id) (:x x) (:y y) (:vx vx) (:vy vy) (:h h) (:dir dir) (:on-ground on-ground) (:k k)))
 
 (defun random-jnb-spawn (seed)
   "Finds an empty tile above a solid/ice tile for spawning."
@@ -52,6 +52,7 @@
          (return (values seed (fp-from-float 100.0) (fp-from-float 100.0))))
        (multiple-value-bind (s1 tx) (fb-rand-int seed 22)
          (multiple-value-bind (s2 ty) (fb-rand-int s1 15) ;; Max ty=15 so ty+1=16
+           (setf seed s2)
            (let ((tile (aref +jnb-map+ ty tx))
                  (below (aref +jnb-map+ (+ ty 1) tx)))
              (when (and (= tile 0) (or (= below 1) (= below 3)))
@@ -77,7 +78,7 @@
             (multiple-value-bind (new-seed rand-x rand-y) (random-jnb-spawn seed)
               (multiple-value-bind (final-seed r-dir) (fb-rand-int new-seed 2)
                 (setf seed final-seed)
-                (setf next-players (fset:with next-players pid (make-jnb-player :id pid :x rand-x :y rand-y :dir r-dir)))))
+                (setf next-players (fset:with next-players pid (make-jnb-player :id pid :x rand-x :y rand-y :dir r-dir :k (fset:lookup p :k))))))
             
             (let ((dx (if input (or (fset:lookup input :dx) 0) 0))
                   (jump (and input (fset:lookup input :jump)))
@@ -127,8 +128,8 @@
                 (when (< nx 0) (setf nx 0))
                 (when (> nx 336000) (setf nx 336000)) ;; 352 - 16
 
-                (setf next-players (fset:with next-players pid 
-                                               (fset:map (:id pid) (:x nx) (:y ny) (:vx vx) (:vy vy) (:h h) (:dir dir) (:on-ground is-on-ground)))))))))
+                (setf next-players (fset:with next-players pid
+                                               (fset:map (:id pid) (:x nx) (:y ny) (:vx vx) (:vy vy) (:h h) (:dir dir) (:on-ground is-on-ground) (:k (fset:lookup p :k))))))))))
 
     ;; 7. Squish Logic — iterates snapshot so a dead player can still kill in the
     ;;    same tick (intentional: allows mutual/simultaneous kills).
@@ -149,8 +150,10 @@
                          (< y1 y2)) 
                 (setf final-players (fset:with final-players p2-id (fset:with (fset:lookup final-players p2-id) :h 0)))
                 (let ((p1-new (fset:lookup final-players p1-id)))
-                   (setf final-players (fset:with final-players p1-id (fset:with p1-new :vy +jnb-jump-force+)))))))))
-      
+                   (setf final-players (fset:with final-players p1-id
+                                                   (fset:with (fset:with p1-new :vy +jnb-jump-force+)
+                                                              :k (1+ (fset:lookup p1-new :k)))))))))))
+
       (let ((next-custom (fset:with custom :seed seed)))
         (fset:with (fset:with (fset:with state :players final-players) :custom-state next-custom) :tick (1+ tick))))))
 
@@ -168,7 +171,8 @@
                         "vx" (fset:lookup p :vx) "vy" (fset:lookup p :vy)
                         "h" (fset:lookup p :h)
                         "d" (fset:lookup p :dir)
-                        "og" (if (fset:lookup p :on-ground) 1 0))
+                        "og" (if (fset:lookup p :on-ground) 1 0)
+                        "k" (or (fset:lookup p :k) 0))
               p-list))
       (when p-list
         (setf (gethash "p" obj) (coerce (nreverse p-list) 'vector))))
