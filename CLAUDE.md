@@ -46,6 +46,8 @@ The Lisp `update` and JS `Update` must produce identical results for the same in
 
 All game math uses integers scaled by 1000 (e.g., 1.5 = 1500). No floats in simulation. Functions: `fpAdd`, `fpSub`, `fpMul`, `fpDiv`, `fpSqrt`, `fpClamp`, etc. JS and Lisp implementations must be bit-identical.
 
+**Exception:** `fp-sqrt` (and `fp-length` which calls it) round-trips through floats internally (`fp-to-float` → CL `sqrt` → `fp-from-float`). These are the only fixed-point simulation functions that use floating-point intermediaries. A pure integer Newton's method replacement would be ideal for cross-platform determinism.
+
 ## Reconciliation
 
 - `foldback-engine.js:processServerMessage()` compares server state to predicted state

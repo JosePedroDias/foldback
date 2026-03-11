@@ -1,10 +1,10 @@
 (in-package #:foldback)
 
 ;; --- Bomberman Constants (Fixed-Point Scale 1000) ---
-(defparameter +player-size+ 700) 
-(defparameter +half-size+ 350)
-(defparameter +respawn-timeout+ 300) ; 5 seconds at 60Hz
-(defparameter +bomb-range+ 3)
+(defconstant +player-size+ 700)
+(defconstant +half-size+ 350)
+(defconstant +respawn-timeout+ 300) ; 5 seconds at 60Hz
+(defconstant +bomb-range+ 3)
 
 ;; --- Level & Map Logic ---
 
@@ -41,6 +41,7 @@
     ;; Uses CL:RANDOM (non-deterministic) — only called during join, which is
     ;; server-authoritative and never client-predicted, so reproducibility is not needed.
     (loop
+       for attempts from 0
        for x = (random w)
        for y = (random h)
        for fpx = (fp-from-float (float x))
@@ -58,6 +59,7 @@
                                                 (< (fp-abs (fp-sub fpx (fset:lookup p :x))) 1000)
                                                 (< (fp-abs (fp-sub fpy (fset:lookup p :y))) 1000))
                                        (return t))))
+       when (> attempts 1000) do (error "find-random-spawn: no valid spawn found after 1000 attempts")
        when (and (= 0 tile) (>= (length neighbors) 2) (not player-collision))
        return (fset:map (:x fpx) (:y fpy)))))
 
@@ -232,8 +234,8 @@
             (:death-tick death-tick)))
 
 (defun bomberman-join (player-id state)
-  (declare (ignore player-id))
   "Initialize a new Bomberman player at a random spawn point."
+  (declare (ignore player-id))
   (let* ((cs (fset:lookup state :custom-state))
          (level (fset:lookup cs :level))
          (spawn (find-random-spawn level state)))

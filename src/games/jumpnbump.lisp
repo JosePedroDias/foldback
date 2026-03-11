@@ -2,14 +2,14 @@
 
 ;; --- Jump and Bump Constants (Fixed-Point Scale 1000) ---
 ;; 1 unit = 1 pixel. Original screen is 400x256, tiles are 16x16.
-(defparameter +jnb-tile-size+ 16000)
-(defparameter +jnb-player-size+ 16000)
-(defparameter +jnb-gravity+ 500)        ;; 0.5 px/tick
-(defparameter +jnb-jump-force+ -6000)   ;; Increased from -4270
-(defparameter +jnb-acceleration+ 250)   ;; 0.25 px/tick
-(defparameter +jnb-friction+ 900)       ;; 0.9 damping
-(defparameter +jnb-ice-friction+ 995)   ;; 0.995 damping (slippery)
-(defparameter +jnb-max-speed+ 1500)     ;; 1.5 px/tick
+(defconstant +jnb-tile-size+ 16000)
+(defconstant +jnb-player-size+ 16000)
+(defconstant +jnb-gravity+ 500)        ;; 0.5 px/tick
+(defconstant +jnb-jump-force+ -6000)   ;; Increased from -4270
+(defconstant +jnb-acceleration+ 250)   ;; 0.25 px/tick
+(defconstant +jnb-friction+ 900)       ;; 0.9 damping
+(defconstant +jnb-ice-friction+ 995)   ;; 0.995 damping (slippery)
+(defconstant +jnb-max-speed+ 1500)     ;; 1.5 px/tick
 
 (defparameter +jnb-map+
   #2A((1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)

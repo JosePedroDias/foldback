@@ -49,9 +49,19 @@
            #:fp-mul
            #:fp-div
            #:fp-sqrt
+           #:fp-abs
+           #:fp-sign
+           #:fp-clamp
+           #:fp-length
            #:fp-dist-sq
            #:fp-dot
            
+           ;; Utilities
+           #:json-obj
+           #:to-json
+           #:fb-next-rand
+           #:fb-rand-int
+
            ;; Physics & Collision
            #:fp-circles-overlap-p
            #:fp-push-circles

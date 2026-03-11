@@ -41,7 +41,7 @@
 ;; --- AABB ---
 
 (defun fp-aabb-overlap-p (x1 y1 w1 h1 x2 y2 w2 h2)
-  "Checks if two AABBs overlap. x,y are center points."
+  "Checks if two AABBs overlap. Uses distance between x,y positions and half-extents."
   (let ((half-w1 (floor w1 2))
         (half-h1 (floor h1 2))
         (half-w2 (floor w2 2))

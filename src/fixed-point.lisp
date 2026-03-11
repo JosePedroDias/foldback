@@ -1,6 +1,6 @@
 (in-package #:foldback)
 
-(defparameter +fp-scale+ 1000)
+(defconstant +fp-scale+ 1000)
 
 (defun fp-round (n)
   "Deterministic rounding: round half away from zero."

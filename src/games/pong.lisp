@@ -1,14 +1,14 @@
 (in-package #:foldback)
 
 ;; --- Pong Constants (Fixed-Point, scale 1000) ---
-(defparameter +pong-table-w+ 12000)     ; 12.0 units wide
-(defparameter +pong-table-h+ 8000)      ; 8.0 units tall
-(defparameter +pong-paddle-x+ 5500)     ; paddle center at x = +/-5.5
-(defparameter +pong-paddle-half-h+ 750) ; paddle half-height (total 1.5 units)
-(defparameter +pong-ball-r+ 150)        ; ball radius
-(defparameter +pong-ball-speed+ 80)     ; initial ball vx per tick
-(defparameter +pong-max-vy+ 120)        ; max vertical speed after paddle bounce
-(defparameter +pong-max-score+ 11)
+(defconstant +pong-table-w+ 12000)     ; 12.0 units wide
+(defconstant +pong-table-h+ 8000)      ; 8.0 units tall
+(defconstant +pong-paddle-x+ 5500)     ; paddle center at x = +/-5.5
+(defconstant +pong-paddle-half-h+ 750) ; paddle half-height (total 1.5 units)
+(defconstant +pong-ball-r+ 150)        ; ball radius
+(defconstant +pong-ball-speed+ 80)     ; initial ball vx per tick
+(defconstant +pong-max-vy+ 120)        ; max vertical speed after paddle bounce
+(defconstant +pong-max-score+ 11)
 
 (defun pong-find-by-side (players side)
   "Return (values pid player) for the player on SIDE, or (values nil nil)."

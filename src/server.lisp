@@ -65,7 +65,7 @@
                                (finish-output)
                                (setf clients (fset:with clients client-key pid))
                                
-                               (let ((welcome (cl:format nil "{\"your_id\":~A,\"game_id\":\"~A\",\"tick_rate\":~A}" pid game-id tick-rate)))
+                               (let ((welcome (to-json (json-obj "your_id" pid "game_id" game-id "tick_rate" tick-rate))))
                                  (usocket:socket-send socket welcome (length welcome) :host remote-host :port remote-port))
 
                                (setf (world-history world)
@@ -88,7 +88,7 @@
                                           m)))
                              (let ((ping-id (fset:lookup input :ping)))
                                (when ping-id
-                                 (let ((pong (cl:format nil "{\"pong\":~A}" ping-id)))
+                                 (let ((pong (to-json (json-obj "pong" ping-id))))
                                    (usocket:socket-send socket pong (length pong) :host remote-host :port remote-port))))
 
                              (if (fset:lookup input :leave)

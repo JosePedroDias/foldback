@@ -1,15 +1,15 @@
 (in-package #:foldback)
 
 ;; --- Air Hockey Constants (Fixed-Point) ---
-(defparameter +ah-table-width+  8000)
-(defparameter +ah-table-height+ 12000)
-(defparameter +ah-paddle-radius+ 400)
-(defparameter +ah-puck-radius+   300)
-(defparameter +ah-goal-width+    2000)
-(defparameter +ah-max-score+ 11)
-(defparameter +ah-friction+ 990) ; 0.99
-(defparameter +ah-bounce+ 800)   ; 0.8
-(defparameter +ah-corner-radius+ 1000)
+(defconstant +ah-table-width+  8000)
+(defconstant +ah-table-height+ 12000)
+(defconstant +ah-paddle-radius+ 400)
+(defconstant +ah-puck-radius+   300)
+(defconstant +ah-goal-width+    2000)
+(defconstant +ah-max-score+ 11)
+(defconstant +ah-friction+ 990) ; 0.99
+(defconstant +ah-bounce+ 800)   ; 0.8
+(defconstant +ah-corner-radius+ 1000)
 
 (defun make-ah-player (id side x y)
   (fset:map (:id id) (:side side) (:x x) (:y y) (:vx 0) (:vy 0) (:score 0)))
@@ -152,7 +152,7 @@
       (setf py (fp-add py pvy))
 
       ;; OOB CHECK
-      (when (or (> (abs px) 4400) (> (abs py) 6600))
+      (when (or (> (fp-abs px) 4400) (> (fp-abs py) 6600))
         (return-from airhockey-update (airhockey-reset-positions state (1+ tick))))
 
       ;; Paddle Collisions (using shared helper)
