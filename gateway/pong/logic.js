@@ -212,7 +212,6 @@ export function pongSync(localState, serverState, myPlayerId) {
     currentServerState = JSON.parse(JSON.stringify(serverState));
     lastSyncTime = Date.now();
     localState.status = serverState.status;
-    localState.ball = serverState.ball;
     for (let id in serverState.players) {
         if (id != myPlayerId) {
             localState.players[id] = serverState.players[id];
@@ -273,17 +272,9 @@ export function pongRender(ctx, canvas, localState, TILE_SIZE, myPlayerId, msPer
         ctx.fillRect(px - pw / 2, py - ph, pw, ph * 2);
     }
 
-    // Ball
-    let ball = localState.ball;
+    // Ball (predicted locally, corrected by reconciliation)
+    const ball = localState.ball;
     if (ball) {
-        if (currentServerState && lastServerState &&
-            lastServerState.ball && currentServerState.ball) {
-            const b1 = lastServerState.ball, b2 = currentServerState.ball;
-            ball = {
-                x: b1.x + (b2.x - b1.x) * lerpFactor,
-                y: b1.y + (b2.y - b1.y) * lerpFactor
-            };
-        }
         const bx = centerX + (ball.x / 1000) * scale;
         const by = centerY + (ball.y / 1000) * scale;
         const br = (PONG_BALL_R / 1000) * scale;

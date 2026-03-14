@@ -26,6 +26,21 @@ const protocol = urlParams.get('protocol') || 'webrtc';
 const world = new FoldBackWorld("pong");
 window.world = world;
 world.reconciliationThresholdSq = 1;
+world.comparisonFn = (predicted, authoritative) => {
+    const myP = predicted.players[world.myPlayerId];
+    const myA = authoritative.players[world.myPlayerId];
+    if (!myP || !myA) return false;
+    const dy = myP.y - myA.y;
+    if (dy * dy > world.reconciliationThresholdSq) return false;
+    const pBall = predicted.ball, aBall = authoritative.ball;
+    if (!!pBall !== !!aBall) return false;
+    if (pBall && aBall) {
+        const dbx = pBall.x - aBall.x;
+        const dby = pBall.y - aBall.y;
+        if (dbx * dbx + dby * dby > world.reconciliationThresholdSq) return false;
+    }
+    return true;
+};
 let connection = { send: () => {}, isOpen: () => false };
 let mouseY = 0;
 

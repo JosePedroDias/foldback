@@ -106,11 +106,14 @@ export function processServerMessage(world, data, simulationFn, applyDeltaFn, sy
     const serverTick = delta.TICK ?? delta.t;
     if (serverTick === undefined) return { type: 'error' };
 
+    // Track whether client had a prediction for this tick (before we modify history)
+    const hadPrediction = world.history.has(serverTick);
+
     // 1. Apply delta to authoritativeState
     world.authoritativeState = applyDeltaFn(world.authoritativeState, delta);
 
     // 2. Reconciliation
-    if (world.myPlayerId !== null && world.history.has(serverTick)) {
+    if (world.myPlayerId !== null && hadPrediction) {
         const predictedState = world.history.get(serverTick);
         const myPredicted = predictedState.players[world.myPlayerId];
         const myAuthoritative = world.authoritativeState.players[world.myPlayerId];
@@ -149,16 +152,22 @@ export function processServerMessage(world, data, simulationFn, applyDeltaFn, sy
                 rollbackAndResimulate(world, serverTick + 1, world.inputBuffer, simulationFn);
                 world.localState = JSON.parse(JSON.stringify(world.history.get(world.currentTick)));
             } else {
-                // Foundation Fix (keep authoritative values but no rollback needed)
+                // Foundation Fix: update history with authoritative state and resimulate
+                // forward so predictions stay consistent with the corrected foundation
                 world.history.set(serverTick, JSON.parse(JSON.stringify(world.authoritativeState)));
+                if (serverTick < world.currentTick) {
+                    rollbackAndResimulate(world, serverTick + 1, world.inputBuffer, simulationFn);
+                    world.localState = JSON.parse(JSON.stringify(world.history.get(world.currentTick)));
+                }
             }
         }
     } else if (world.myPlayerId !== null) {
         world.history.set(serverTick, JSON.parse(JSON.stringify(world.authoritativeState)));
     }
 
-    // Initial sync or jump forward
-    if (world.localState.tick === 0 || serverTick > world.currentTick + 60) {
+    // Initial sync, jump forward, or passive follow (no active prediction)
+    if (world.localState.tick === 0 || serverTick > world.currentTick + 60
+        || (!hadPrediction && serverTick > world.currentTick)) {
         world.reset(world.authoritativeState);
     }
 

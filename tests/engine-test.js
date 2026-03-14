@@ -325,4 +325,188 @@ console.log("Testing Engine Reconciliation...\n");
     assert(Object.keys(w.localState.players).length === 2, "Lifecycle: 2 players again");
 }
 
+// --- Test 17: Passive tick tracking during WAITING (no drift) ---
+{
+    const w = new FoldBackWorld('pong');
+    w.reconciliationThresholdSq = 1;
+    feed(w, makeWelcome(0));
+
+    // Server sends 50 ticks of WAITING — client should follow each one
+    for (let t = 1; t <= 50; t++) {
+        feed(w, makeDelta(t, 'WAITING', [P0], null));
+    }
+    assert(w.currentTick === 50, "Passive follow: currentTick tracks server at 50 (was " + w.currentTick + ")");
+    assert(w.localState.tick === 50, "Passive follow: localState.tick is 50");
+
+    // Second player joins at tick 51 — transition should be instant, no 60-tick gap
+    feed(w, makeDelta(51, 'ACTIVE', [P0, P1], BALL0));
+    assert(w.currentTick === 51, "Passive follow: currentTick is 51 after ACTIVE transition");
+    assert(w.localState.status === 'ACTIVE', "Passive follow: status is ACTIVE");
+    assert(Object.keys(w.localState.players).length === 2, "Passive follow: 2 players");
+
+    // Client can immediately start predicting from tick 51
+    clientPredict(w, { ty: 300 });
+    assert(w.currentTick === 52, "Passive follow: prediction starts from 52");
+    assert(w.localState.players[0].y === 300, "Passive follow: prediction applied");
+}
+
+// --- Test 18: ACTIVE → WAITING → ACTIVE round-trip with no stale predictions ---
+{
+    const w = new FoldBackWorld('pong');
+    w.reconciliationThresholdSq = 1;
+    feed(w, makeWelcome(0));
+
+    // Start ACTIVE
+    feed(w, makeDelta(1, 'ACTIVE', [P0, P1], BALL0));
+    clientPredict(w, { ty: 500 });
+    clientPredict(w, { ty: 1000 });
+    assert(w.currentTick === 3, "Round-trip: predicted to tick 3");
+
+    // Player leaves → WAITING (structural change triggers rollback)
+    feed(w, makeDelta(4, 'WAITING', [{ ...P0, y: 0, sc: 0 }], null));
+    assert(w.localState.status === 'WAITING', "Round-trip: back to WAITING");
+
+    // 10 ticks of WAITING — client passively follows
+    for (let t = 5; t <= 14; t++) {
+        feed(w, makeDelta(t, 'WAITING', [{ ...P0, y: 0, sc: 0 }], null));
+    }
+    assert(w.currentTick === 14, "Round-trip: followed server to 14 (was " + w.currentTick + ")");
+
+    // New player joins → ACTIVE again
+    const P2 = { id: 2, side: 1, x: 5500, y: 0, sc: 0 };
+    feed(w, makeDelta(15, 'ACTIVE', [P0, P2], BALL0));
+    assert(w.currentTick === 15, "Round-trip: at tick 15");
+    assert(w.localState.status === 'ACTIVE', "Round-trip: ACTIVE again");
+
+    // Can predict immediately
+    clientPredict(w, { ty: 200 });
+    assert(w.currentTick === 16, "Round-trip: predicting from 16");
+}
+
+// --- Test 19: Prediction during active play doesn't get reset ---
+{
+    const w = new FoldBackWorld('pong');
+    w.reconciliationThresholdSq = 1;
+    feed(w, makeWelcome(0));
+
+    // ACTIVE state, client predicts ahead
+    feed(w, makeDelta(1, 'ACTIVE', [P0, P1], BALL0));
+    clientPredict(w, { ty: 500 });
+    clientPredict(w, { ty: 1000 });
+    clientPredict(w, { ty: 1500 });
+    assert(w.currentTick === 4, "Active predict: at tick 4");
+
+    // Server confirms tick 2 — client had prediction, should NOT reset
+    feed(w, makeDelta(2, 'ACTIVE',
+        [{ ...P0, y: 500 }, P1],
+        { x: 160, y: 0, vx: 80, vy: 0 }));
+    assert(w.currentTick === 4, "Active predict: still at tick 4 (not reset to 2)");
+    assert(w.localState.tick === 4, "Active predict: localState still at tick 4");
+}
+
+// --- Test 20: Ball misprediction triggers rollback when ball is predicted ---
+{
+    const w = new FoldBackWorld('pong');
+    w.reconciliationThresholdSq = 1;
+    // Use custom comparison that checks ball position
+    w.comparisonFn = (predicted, authoritative) => {
+        const myP = predicted.players[w.myPlayerId];
+        const myA = authoritative.players[w.myPlayerId];
+        if (!myP || !myA) return false;
+        const dy = myP.y - myA.y;
+        if (dy * dy > 1) return false;
+        // Also check ball
+        if (predicted.ball && authoritative.ball) {
+            const dbx = predicted.ball.x - authoritative.ball.x;
+            const dby = predicted.ball.y - authoritative.ball.y;
+            if (dbx * dbx + dby * dby > 1) return false;
+        }
+        return true;
+    };
+    feed(w, makeWelcome(0));
+    feed(w, makeDelta(1, 'ACTIVE', [P0, P1], BALL0));
+    clientPredict(w, { ty: 0 });
+    assert(w.currentTick === 2, "Ball mispredict: at tick 2");
+
+    const rollbacksBefore = w.totalRollbacks;
+    // Server ball at different position than predicted
+    feed(w, makeDelta(2, 'ACTIVE', [P0, P1],
+        { x: 200, y: 100, vx: 80, vy: 50 }));
+    assert(w.totalRollbacks === rollbacksBefore + 1,
+        "Ball mispredict: rollback triggered on ball position difference");
+}
+
+// --- Test 21: Ball is predicted locally, not overwritten by sync ---
+{
+    const w = new FoldBackWorld('pong');
+    w.reconciliationThresholdSq = 1;
+    w.comparisonFn = (predicted, authoritative) => {
+        const myP = predicted.players[w.myPlayerId];
+        const myA = authoritative.players[w.myPlayerId];
+        if (!myP || !myA) return false;
+        const dy = myP.y - myA.y;
+        if (dy * dy > w.reconciliationThresholdSq) return false;
+        const pBall = predicted.ball, aBall = authoritative.ball;
+        if (!!pBall !== !!aBall) return false;
+        if (pBall && aBall) {
+            const dbx = pBall.x - aBall.x;
+            const dby = pBall.y - aBall.y;
+            if (dbx * dbx + dby * dby > w.reconciliationThresholdSq) return false;
+        }
+        return true;
+    };
+    feed(w, makeWelcome(0));
+    feed(w, makeDelta(1, 'ACTIVE', [P0, P1], BALL0));
+
+    // Predict 3 ticks — ball should advance via pongUpdate
+    clientPredict(w, { ty: 0 });
+    clientPredict(w, { ty: 0 });
+    clientPredict(w, { ty: 0 });
+    assert(w.currentTick === 4, "Ball predict: at tick 4");
+
+    // Ball should have moved: starts at x=0 (tick 1), after 3 predictions x = 80*3 = 240
+    assert(w.localState.ball.x === 240, "Ball predict: ball.x predicted to 240 (80*3 ticks from tick 1)");
+
+    // Server confirms tick 2 with matching ball (x=80 after 1 tick from x=0)
+    const rollbacksBefore = w.totalRollbacks;
+    feed(w, makeDelta(2, 'ACTIVE', [P0, P1],
+        { x: 80, y: 0, vx: 80, vy: 0 }));
+    assert(w.totalRollbacks === rollbacksBefore, "Ball predict: no rollback when ball matches");
+
+    // Ball in localState should still be predicted (at tick 4), not overwritten to server's tick 2
+    assert(w.localState.ball.x === 240, "Ball predict: ball.x still 240 after sync (not overwritten)");
+}
+
+// --- Test 22: Foundation Fix resimulates forward ---
+{
+    const w = new FoldBackWorld('pong');
+    w.reconciliationThresholdSq = 1;
+    feed(w, makeWelcome(0));
+    feed(w, makeDelta(1, 'ACTIVE', [P0, P1], BALL0));
+
+    // Predict 3 ticks with y=0 (no paddle movement)
+    clientPredict(w, { ty: 0 });
+    clientPredict(w, { ty: 0 });
+    clientPredict(w, { ty: 0 });
+    assert(w.currentTick === 4, "Foundation resim: at tick 4");
+
+    // Ball at tick 4 predicted from our foundation: x = 80*3 = 240
+    const ballBefore = w.localState.ball.x;
+    assert(ballBefore === 240, "Foundation resim: ball.x = 240 before fix");
+
+    // Server confirms tick 2 with paddle match but ball has slightly different vy
+    // (within threshold so no misprediction, but ball trajectory diverges)
+    const rollbacksBefore = w.totalRollbacks;
+    feed(w, makeDelta(2, 'ACTIVE', [P0, P1],
+        { x: 80, y: 0, vx: 80, vy: 10 }));
+    assert(w.totalRollbacks === rollbacksBefore, "Foundation resim: no rollback (within threshold)");
+
+    // After foundation fix + resim, tick 4 ball should reflect the corrected vy=10
+    // From tick 2: ball = {x:80, y:0, vx:80, vy:10}
+    // Tick 3: x=160, y=10
+    // Tick 4: x=240, y=20
+    assert(w.localState.ball.y === 20, "Foundation resim: ball.y corrected to 20 via resim (was 0)");
+    assert(w.localState.ball.x === 240, "Foundation resim: ball.x still 240");
+}
+
 console.log("\nAll Engine Reconciliation Tests Passed!");
