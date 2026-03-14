@@ -1,4 +1,4 @@
-.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-fixed-point test-bomberman-unit test-bomberman-respawn test-bomberman-stress benchmark check-lisp check-parens alive-lsp kill-servers kill-game kill-gateway
+.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong lisp-tictactoe gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-tictactoe test-fixed-point test-bomberman-unit test-bomberman-respawn test-bomberman-stress benchmark check-lisp check-parens alive-lsp kill-servers kill-game kill-gateway
 
 all: lisp-bomberman gateway
 
@@ -44,7 +44,12 @@ lisp-pong:
 		 --eval "(ql:quickload :foldback)" \
 		 --eval "(foldback:start-server :game-id \"pong\" :simulation-fn #'foldback:pong-update :serialization-fn #'foldback:pong-serialize :join-fn #'foldback:pong-join)"
 
-test: test-lisp test-gateway test-engine test-server-flow test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross
+lisp-tictactoe:
+	sbcl --load foldback.asd \
+		 --eval "(ql:quickload :foldback)" \
+		 --eval "(foldback:start-server :game-id \"tictactoe\" :simulation-fn #'foldback:ttt-update :serialization-fn #'foldback:ttt-serialize :join-fn #'foldback:ttt-join :tick-rate 10)"
+
+test: test-lisp test-gateway test-engine test-server-flow test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-tictactoe
 
 test-lisp:
 	sbcl --non-interactive \
@@ -110,6 +115,13 @@ test-pong-cross:
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/pong-cross-test.lisp
+
+test-tictactoe:
+	@echo "--- Running Tic-Tac-Toe Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/tictactoe-test.lisp
 
 test-fixed-point:
 	@echo "--- Running Fixed-Point Cross-Platform Tests (JS) ---"

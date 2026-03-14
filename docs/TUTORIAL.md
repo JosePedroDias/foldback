@@ -1,6 +1,11 @@
-# Building Authoritative Games with FoldBack: A CSP Tutorial
+# Building Authoritative Games with FoldBack
 
-This tutorial walks you through building **Pong** as a FoldBack game, step by step. By the end you will understand Client-Side Prediction (CSP), how the Lisp server and JavaScript client stay in sync, and how to add your own game to the engine.
+This tutorial walks you through building games with FoldBack. It covers two modes:
+
+1. **Authoritative-only** (no CSP) -- the server is the single source of truth and clients just render what they receive. Simpler, ideal for turn-based or slow-paced games. We build **Tic-Tac-Toe** as the example.
+2. **Client-Side Prediction** (CSP) -- clients run the simulation locally for instant feedback and roll back when the server disagrees. Essential for fast-paced games. We build **Pong** as the example.
+
+Both modes use the same Lisp server infrastructure. The difference is entirely on the client side.
 
 ---
 
@@ -25,11 +30,101 @@ Think of a game's history as a fold (reduce) over a list of inputs:
 state_N = fold(simulate, state_0, [inputs_1, inputs_2, ... inputs_N])
 ```
 
-The server computes this authoritatively. The client computes it speculatively. When they disagree, the client rewinds and re-folds from the last known-good state. That is client-side prediction in one sentence.
+The server computes this authoritatively. For CSP games, the client computes it speculatively too. When they disagree, the client rewinds and re-folds from the last known-good state. That is client-side prediction in one sentence.
+
+For authoritative-only games, the client skips prediction entirely -- it just sends inputs and renders what the server tells it.
 
 ---
 
-## Step 1: Decomposing Pong
+## Part I: Authoritative-Only (Tic-Tac-Toe)
+
+Not every game needs CSP. Turn-based games, card games, and slow-paced games work well with the server as the sole authority. The client sends actions, the server processes them, and broadcasts the result. No local simulation, no rollback, no history buffer.
+
+### The Authoritative-Only Contract
+
+On the server, you still implement the same 3 Lisp functions as any FoldBack game:
+
+- **`ttt-join(player-id, state)`** -- assign a side (X or O), reject if full
+- **`ttt-update(state, inputs)`** -- validate moves, check win/draw, advance turns
+- **`ttt-serialize(state, last-state)`** -- encode full state as JSON
+
+On the client, you need fewer functions since there is no local simulation:
+
+- **`tttApplyDelta(baseState, delta)`** -- parse server JSON into client state
+- **`tttSync(localState, serverState, myPlayerId)`** -- overwrite local state from server (trivial for authoritative-only)
+- **`render(world)`** -- draw the game
+- **`getInput(world)`** -- return pending player action, or null
+
+No `updateFn` is needed -- the client never simulates locally.
+
+### Client Setup
+
+The key difference is `prediction: false` in `createGameClient`:
+
+```javascript
+const { world } = createGameClient({
+    gameName: 'tictactoe',
+    prediction: false,           // <-- no CSP
+    applyDeltaFn: tttApplyDelta,
+    syncFn: tttSync,
+    render: () => tttRender(ctx, canvas, world.localState, world.myPlayerId),
+    getInput: () => {
+        if (pendingCell === null) return null;
+        const cell = pendingCell;
+        pendingCell = null;
+        return { wire: { CELL: cell } };
+    },
+});
+```
+
+When `prediction` is `false`:
+- The tick loop sends inputs to the server but does not run a local simulation
+- No history is stored, no rollback is possible, no lead-limiting applies
+- The client state is always whatever the server last sent
+- No `updateFn` is required in the config
+
+### Event-Driven Input
+
+For turn-based games, input is event-driven rather than continuous. A click handler sets a pending action, and `getInput` consumes it:
+
+```javascript
+let pendingCell = null;
+
+canvas.addEventListener('click', (e) => {
+    const col = Math.floor(x / cellSize);
+    const row = Math.floor(y / cellSize);
+    pendingCell = row * 3 + col;
+});
+
+// getInput returns the pending cell once, then null until the next click
+getInput: () => {
+    if (pendingCell === null) return null;
+    const cell = pendingCell;
+    pendingCell = null;
+    return { wire: { CELL: cell } };
+}
+```
+
+The server receives `{"CELL": 4}`, validates it (correct turn? cell empty?), and applies it. Invalid moves are silently ignored.
+
+### Tick Rate
+
+Authoritative-only games can run at a lower tick rate. Tic-Tac-Toe uses 10Hz (`:tick-rate 10` in the Makefile target), since there is no physics to simulate -- just turn validation.
+
+### When to Use Authoritative-Only
+
+- **Turn-based games**: Tic-Tac-Toe, Chess, card games
+- **Slow-paced games**: puzzle games, strategy games
+- **Games with hidden state**: the server can send different data to different players (see Go Fish, planned)
+- **Prototyping**: get the game logic right without worrying about CSP complexity
+
+---
+
+## Part II: Client-Side Prediction (Pong)
+
+For fast-paced games where latency matters, FoldBack supports CSP. The client runs the same simulation locally for instant feedback, and rolls back when the server disagrees. This is what the rest of the tutorial covers.
+
+### Step 1: Decomposing Pong
 
 Before writing any code, break every game mechanic into a pure state transformation -- a function that takes the world as it is and returns the world one tick later.
 
@@ -83,7 +178,7 @@ These six mechanics, chained in sequence, form the entire `pongUpdate` function.
 
 ---
 
-## Step 2: The State Contract
+### Step 2: The State Contract
 
 Every FoldBack game uses the same top-level state shape. This is what allows the generic engine to handle rollback and reconciliation without knowing anything about your specific game.
 
@@ -121,7 +216,7 @@ Every FoldBack game uses the same top-level state shape. This is what allows the
 
 ---
 
-## Step 3: The Seven Functions
+### Step 3: The Seven Functions
 
 To add a game to FoldBack, you implement **3 Lisp functions** (server-side) and **4 JavaScript functions** (client-side). The engine handles everything else.
 
@@ -249,7 +344,7 @@ Full implementation: `gateway/pong/logic.js` (draws table outline, dashed center
 
 ---
 
-## Step 4: Fixed-Point Math and Determinism
+### Step 4: Fixed-Point Math and Determinism
 
 ### Why Floats Are Evil
 
@@ -309,7 +404,7 @@ If your game has randomness (Pong does not), use the shared `fbRandInt(seed)` / 
 
 ---
 
-## Step 5: The CSP Bridge
+### Step 5: The CSP Bridge
 
 The "bridge" is what must be identical on both sides. For Pong, it is the `pong-update` / `pongUpdate` function pair.
 
@@ -383,7 +478,7 @@ If any of these differ by even one integer, the client and server will desync an
 
 ---
 
-## Step 6: The Client Loop
+### Step 6: The Client Loop
 
 The shared `createGameClient` in `gateway/game-client.js` handles the tick loop, networking, and input buffering for all games. Each game provides a `getInput(world)` callback that returns the game-specific input. Here is the sequence of operations every tick (~16ms):
 
@@ -443,7 +538,7 @@ The reconciliation threshold for Pong is set very tight (`world.reconciliationTh
 
 ---
 
-## Step 7: Smoothing (Linear Interpolation)
+### Step 7: Smoothing (Linear Interpolation)
 
 Even with perfect CSP for your own paddle, the **opponent's paddle** and the **ball** only update when a server packet arrives. Without smoothing, they snap between positions.
 
@@ -498,7 +593,7 @@ if (lastServerState?.ball && currentServerState?.ball) {
 
 ---
 
-## Step 8: Wiring
+### Step 8: Wiring
 
 Once your seven functions are written, connect them to the engine and build system.
 
@@ -622,7 +717,7 @@ New public symbols must be added to `src/package.lisp`:
 
 ---
 
-## Step 9: Testing
+### Step 9: Testing
 
 FoldBack uses two kinds of tests: **cross-platform unit tests** (verify Lisp and JS produce identical results) and **Playwright E2E tests** (real browsers playing via WebRTC).
 
@@ -712,42 +807,61 @@ npx playwright test tests/pong.spec.ts
 
 ## Checklist: Adding a New Game
 
+### Shared (both modes)
+
 ```
 Lisp (src/games/[game].lisp)
- [ ] Define game constants (sizes, speeds, physics values)
+ [ ] Define game constants
  [ ] Implement [game]-join(player-id, state) -> player-map
  [ ] Implement [game]-update(state, inputs) -> new-state
  [ ] Implement [game]-serialize(current-state, last-state) -> json-string
      Use json-obj with keywords for UPPERCASE keys, serialize-player-list for players
  [ ] Export all functions from the foldback package (src/package.lisp)
 
-JavaScript (gateway/[game]/logic.js)
- [ ] Port all constants (must match Lisp exactly)
- [ ] Port [game]-update identically -> gameUpdate(state, inputs)
- [ ] Implement gameApplyDelta(baseState, delta) -> mergedState
-     Map UPPERCASE wire keys to internal lowercase
- [ ] Implement gameSync(localState, serverState, myPlayerId)
- [ ] Implement gameRender(ctx, canvas, state, ...)
-
 Wiring (gateway/[game]/)
  [ ] index.html -- canvas + script tag
  [ ] index.js -- use createGameClient() from game-client.js
-     Provide: gameName, updateFn, applyDeltaFn, syncFn, render, getInput
-     Optional hooks: onBeforeMessage, onAfterMessage, onAfterInput, onRender, init
+ [ ] Add link to gateway/index.html
 
 Wire Protocol (schemas/[game]/) -- optional but recommended
- [ ] client-to-server.schema.json -- JOIN, INPUT, PING, LEAVE
- [ ] server-to-client.schema.json -- WELCOME, PONG, STATE_UPDATE
+ [ ] client-to-server.schema.json
+ [ ] server-to-client.schema.json
 
 Build System
  [ ] foldback.asd -- add (:file "[game]") to games module
  [ ] Makefile -- add lisp-[game] target
 
 Testing
- [ ] Cross-platform test: same inputs in Lisp and JS, compare final state
- [ ] Serialization test: verify UPPERCASE keys in Lisp output
- [ ] ApplyDelta test: verify UPPERCASE -> lowercase mapping in JS
+ [ ] Lisp unit tests for game logic
  [ ] Run make check-parens after editing .lisp files
+```
+
+### Authoritative-Only (no CSP) -- e.g., Tic-Tac-Toe
+
+```
+JavaScript (gateway/[game]/index.js)
+ [ ] Implement applyDeltaFn(baseState, delta) -- parse server JSON
+ [ ] Implement syncFn(localState, serverState, myPlayerId) -- overwrite from server
+ [ ] Implement render function
+ [ ] Implement getInput -- event-driven (return action once, then null)
+ [ ] createGameClient with prediction: false (no updateFn needed)
+ [ ] Consider lower tick rate (:tick-rate 10 in Makefile target)
+```
+
+### CSP -- e.g., Pong
+
+```
+JavaScript (gateway/[game]/logic.js)
+ [ ] Port all constants (must match Lisp exactly)
+ [ ] Port [game]-update identically -> gameUpdate(state, inputs)
+ [ ] Implement gameApplyDelta(baseState, delta) -> mergedState
+ [ ] Implement gameSync(localState, serverState, myPlayerId)
+ [ ] Implement gameRender(ctx, canvas, state, ...)
+ [ ] createGameClient with updateFn, applyDeltaFn, syncFn, render, getInput
+     Optional hooks: onBeforeMessage, onAfterMessage, onAfterInput, onRender, init
+
+Testing (additional)
+ [ ] Cross-platform test: same inputs in Lisp and JS, compare final state
  [ ] Playwright E2E test: two browsers, verify prediction and rollback
 ```
 
@@ -767,16 +881,16 @@ Testing
 
 To add a new game to FoldBack:
 
-1. Decompose every mechanic into a pure state transformation.
-2. Define the state shape and constants.
-3. Write the Lisp server functions first (`join`, `update`, `serialize`).
-4. Port `update` to JavaScript exactly -- same constants, same logic, same fixed-point math.
-5. Write `applyDelta`, `sync`, and `render` on the client.
-6. Wire it up: HTML, entry point, ASDF, Makefile.
-7. Write cross-platform tests and verify Lisp and JS produce identical results.
+1. Decide if you need CSP (fast-paced, latency-sensitive) or authoritative-only (turn-based, hidden state).
+2. Decompose every mechanic into a pure state transformation.
+3. Define the state shape and constants.
+4. Write the Lisp server functions (`join`, `update`, `serialize`).
+5. **For CSP games**: port `update` to JavaScript exactly -- same constants, same logic, same fixed-point math. Write `applyDelta`, `sync`, and `render`. Use cross-platform tests to verify Lisp and JS match.
+6. **For authoritative-only games**: write `applyDelta`, `sync`, and `render`. Set `prediction: false` in `createGameClient`. No JS simulation needed.
+7. Wire it up: HTML, entry point, ASDF, Makefile, index page link.
 8. The Go gateway requires **zero changes** -- it is fully game-agnostic.
 
-Start with the simplest possible state (one player, one mechanic). Get the cross-platform test passing before adding complexity. Pong is the reference implementation -- study it, copy its structure, and build from there.
+**Tic-Tac-Toe** is the reference for authoritative-only games. **Pong** is the reference for CSP games. Start with the simplest possible state and build from there.
 
 ---
 

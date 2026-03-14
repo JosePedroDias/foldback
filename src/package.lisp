@@ -83,4 +83,9 @@
            ;; Jump and Bump Game Logic
            #:jnb-join
            #:jnb-update
-           #:jnb-serialize))
+           #:jnb-serialize
+
+           ;; Tic-Tac-Toe Game Logic
+           #:ttt-join
+           #:ttt-update
+           #:ttt-serialize))

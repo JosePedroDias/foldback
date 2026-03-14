@@ -5,5 +5,7 @@
 - i would like to support authentication. could be email one time token and/or google authetntication (can i support google auth without registering my domain somehow with them?)
 
 - not all games need client side prediction. support a simple setup for some games where server is authoritative period (maybe there's nothing to change on the server, just keep the client simpler). I want to illustrate this idea with 1 or 2 simple games, such as tictactoe and a simple cards game (where hidden state is involved, ie, different clients get server differnt parts of the state
+  - DONE: `prediction: false` mode in `createGameClient` + tic-tac-toe game (no CSP, no hidden state, turn-based at 10Hz)
+  - TODO: implement Go Fish (no CSP, with hidden state) — server sends different state per player (hand vs opponents' card counts). requires per-player serialization support in server broadcast
 
 - it would be great if scaling of game servers would depend on requests. this would require the gateway to be able to know which ip/port of game servers would be online and how many clients each has (updated periodically)

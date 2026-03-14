@@ -11,13 +11,16 @@ import { FoldBackWorld, processServerMessage } from './foldback-engine.js';
  *
  * @param {Object} config
  * @param {string}   config.gameName      - Game identifier (must match server)
- * @param {Function} config.updateFn      - (state, inputs) => newState
+ * @param {Function} config.updateFn      - (state, inputs) => newState (not needed if prediction=false)
  * @param {Function} config.applyDeltaFn  - (baseState, delta) => newState
  * @param {Function} config.syncFn        - (localState, serverState, myPlayerId) => void
  * @param {Function} config.render        - (world) => void — called each frame
  * @param {Function} config.getInput      - (world) => { local, wire } | null
  *   Return null to skip input this tick (e.g., game not ACTIVE).
- *   TICK is added automatically to both local (.t) and wire (.TICK).
+ *   TICK is added automatically to both local (.t) and wire (.TICK) when prediction=true.
+ * @param {boolean}  [config.prediction=true] - Enable client-side prediction.
+ *   When false, the client is purely authoritative: it sends inputs and renders
+ *   whatever the server sends back. No local simulation, rollback, or history.
  * @param {Function} [config.onBeforeMessage] - (world) => void
  * @param {Function} [config.onAfterMessage]  - (world, res) => void
  * @param {Function} [config.onAfterInput]    - (world) => void — after local prediction step
@@ -33,6 +36,7 @@ export function createGameClient(config) {
         syncFn,
         render,
         getInput,
+        prediction = true,
         onBeforeMessage,
         onAfterMessage,
         onAfterInput,
@@ -70,10 +74,15 @@ export function createGameClient(config) {
         }
 
         if (res.tick !== undefined) {
-            const ahead = world.currentTick - res.tick;
             const pCount = Object.keys(world.localState.players).length;
-            document.getElementById('netStats').innerText =
-                `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}) | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks} | Players: ${pCount}`;
+            if (prediction) {
+                const ahead = world.currentTick - res.tick;
+                document.getElementById('netStats').innerText =
+                    `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}) | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks} | Players: ${pCount}`;
+            } else {
+                document.getElementById('netStats').innerText =
+                    `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} | RTT: ${world.rtt}ms | Players: ${pCount}`;
+            }
         }
 
         if (onAfterMessage) onAfterMessage(world, res);
@@ -81,32 +90,40 @@ export function createGameClient(config) {
 
     function tick() {
         if (connection.isOpen() && world.myPlayerId !== null) {
-            const serverTick = world.authoritativeState.tick;
-            const lead = world.currentTick - serverTick;
+            if (prediction) {
+                const serverTick = world.authoritativeState.tick;
+                const lead = world.currentTick - serverTick;
 
-            if (lead < world.maxLead) {
+                if (lead < world.maxLead) {
+                    const inputResult = getInput(world);
+
+                    if (inputResult) {
+                        const nextTick = world.currentTick + 1;
+                        const local = { ...inputResult.local, t: nextTick };
+                        const wire = { ...inputResult.wire, TICK: nextTick };
+
+                        connection.send(JSON.stringify(wire));
+
+                        window.foldback_test_state.lastInputSent = { input: local, tick: nextTick };
+
+                        if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
+                        world.inputBuffer.get(nextTick)[world.myPlayerId] = local;
+
+                        const inputsForTick = {};
+                        inputsForTick[world.myPlayerId] = local;
+
+                        world.localState = updateFn(world.localState, inputsForTick);
+                        world.currentTick = nextTick;
+                        world.history.set(nextTick, JSON.parse(JSON.stringify(world.localState)));
+
+                        if (onAfterInput) onAfterInput(world);
+                    }
+                }
+            } else {
+                // Authoritative-only: send input to server, no local simulation
                 const inputResult = getInput(world);
-
                 if (inputResult) {
-                    const nextTick = world.currentTick + 1;
-                    const local = { ...inputResult.local, t: nextTick };
-                    const wire = { ...inputResult.wire, TICK: nextTick };
-
-                    connection.send(JSON.stringify(wire));
-
-                    window.foldback_test_state.lastInputSent = { input: local, tick: nextTick };
-
-                    if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
-                    world.inputBuffer.get(nextTick)[world.myPlayerId] = local;
-
-                    const inputsForTick = {};
-                    inputsForTick[world.myPlayerId] = local;
-
-                    world.localState = updateFn(world.localState, inputsForTick);
-                    world.currentTick = nextTick;
-                    world.history.set(nextTick, JSON.parse(JSON.stringify(world.localState)));
-
-                    if (onAfterInput) onAfterInput(world);
+                    connection.send(JSON.stringify(inputResult.wire));
                 }
             }
 

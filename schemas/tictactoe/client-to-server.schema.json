@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tic-Tac-Toe Client-to-Server Messages",
+  "description": "Messages sent by the JS client to the Lisp server for Tic-Tac-Toe. No CSP — server is fully authoritative.",
+  "oneOf": [
+    {
+      "title": "Move",
+      "description": "Place a mark on a cell. Only valid on the current player's turn and on an empty cell.",
+      "type": "object",
+      "properties": {
+        "CELL": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8,
+          "description": "Board cell index (0-8, row-major: 0=top-left, 8=bottom-right)"
+        }
+      },
+      "required": ["CELL"]
+    },
+    {
+      "title": "Rematch",
+      "description": "Request a new game after a win/loss/draw.",
+      "type": "object",
+      "properties": {
+        "TYPE": { "const": "REMATCH" }
+      },
+      "required": ["TYPE"]
+    },
+    {
+      "title": "Ping",
+      "type": "object",
+      "properties": {
+        "TYPE": { "const": "PING" },
+        "ID": { "type": "number" }
+      },
+      "required": ["TYPE", "ID"]
+    },
+    {
+      "title": "Join",
+      "type": "object",
+      "properties": {
+        "TYPE": { "const": "JOIN" }
+      },
+      "required": ["TYPE"]
+    },
+    {
+      "title": "Leave",
+      "type": "object",
+      "properties": {
+        "TYPE": { "const": "LEAVE" }
+      },
+      "required": ["TYPE"]
+    }
+  ]
+}

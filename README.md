@@ -38,18 +38,19 @@ The project has three layers:
 
 ### Adding a Game
 
-Each game provides 3 Lisp functions (join, update, serialize) and 4 JavaScript functions (update, applyDelta, sync, render). The engine handles rollback, networking, and reconciliation. See [the tutorial](docs/TUTORIAL_CSP.md) for the full walkthrough and checklist.
+Each game provides 3 Lisp functions (join, update, serialize) and a JavaScript client. Games that need instant feedback use client-side prediction (CSP), where the JS client mirrors the Lisp simulation and reconciles with the server. Simpler games can use authoritative-only mode (`prediction: false`) where the client just renders what the server sends. See [the tutorial](docs/TUTORIAL.md) for the full walkthrough and checklist.
 
 ## Example Games
 
-| Game | Source | Physics | Key Mechanic |
-|------|--------|---------|-------------|
-| Pong | [GDD](docs/GDDs/PONG.md), `src/games/pong.lisp` | Ball & paddle | Tutorial game — simplest CSP example |
-| Bomberman | [GDD](docs/GDDs/BOMBERMAN.md), `src/games/bomberman.lisp` | Grid-based | Bomb placement, chain reactions, bot AI |
-| Air Hockey | [GDD](docs/GDDs/AIRHOCKEY.md), `src/games/airhockey.lisp` | Fixed-point circle/line | 1:1 paddle tracking, puck bounces, scoring to 11 |
-| Jump and Bump | [GDD](docs/GDDs/JUMPNBUMP.md), `src/games/jumpnbump.lisp` | Platformer (gravity, inertia) | Head-stomping elimination, screen wrapping |
+| Game | Source | Mode | Key Mechanic |
+|------|--------|------|-------------|
+| Tic-Tac-Toe | [GDD](docs/GDDs/TICTACTOE.md), `src/games/tictactoe.lisp` | Authoritative-only | Turn-based, no CSP — simplest example |
+| Pong | [GDD](docs/GDDs/PONG.md), `src/games/pong.lisp` | CSP | Tutorial game — simplest CSP example |
+| Bomberman | [GDD](docs/GDDs/BOMBERMAN.md), `src/games/bomberman.lisp` | CSP | Bomb placement, chain reactions, bot AI |
+| Air Hockey | [GDD](docs/GDDs/AIRHOCKEY.md), `src/games/airhockey.lisp` | CSP | 1:1 paddle tracking, puck bounces, scoring to 11 |
+| Jump and Bump | [GDD](docs/GDDs/JUMPNBUMP.md), `src/games/jumpnbump.lisp` | CSP | Platformer: head-stomping, screen wrapping |
 
-Each game has its logic mirrored in JavaScript under `gateway/[game]/logic.js` for client-side prediction.
+CSP games have their simulation mirrored in JavaScript under `gateway/[game]/logic.js`. Authoritative-only games only need rendering and input handling on the client.
 
 ## Getting Started
 
@@ -65,6 +66,7 @@ Each game has its logic mirrored in JavaScript under `gateway/[game]/logic.js` f
 make setup
 
 # Terminal 1 — start a game server (pick one)
+make lisp-tictactoe
 make lisp-pong
 make lisp-bomberman
 make lisp-airhockey
@@ -99,8 +101,6 @@ Launches two headless browsers and verifies that players can connect, see each o
 
 ## Documentation
 
-- [Tutorial: Building Games with FoldBack](docs/TUTORIAL_CSP.md) — state contract, the 7 functions, CSP bridge, determinism, wiring, and a new-game checklist
-- [CSP Roadmap](docs/ROADMAP_CSP.md) — implementation status of prediction, rollback, interpolation, and per-player acks
+- [Tutorial: Building Games with FoldBack](docs/TUTORIAL.md) — authoritative-only and CSP modes, state contract, wiring, and a new-game checklist
 - [Debugging Reference](docs/DEBUGGING.md) — SBCL/FSet/ASDF gotchas and solutions
-- [Test Plan](docs/TEST_PLAN.md) — Playwright and Lisp test strategy for validating prediction and rollback
-- Game Design Documents: [Pong](docs/GDDs/PONG.md), [Bomberman](docs/GDDs/BOMBERMAN.md), [Air Hockey](docs/GDDs/AIRHOCKEY.md), [Jump and Bump](docs/GDDs/JUMPNBUMP.md)
+- Game Design Documents: [Tic-Tac-Toe](docs/GDDs/TICTACTOE.md), [Pong](docs/GDDs/PONG.md), [Bomberman](docs/GDDs/BOMBERMAN.md), [Air Hockey](docs/GDDs/AIRHOCKEY.md), [Jump and Bump](docs/GDDs/JUMPNBUMP.md)

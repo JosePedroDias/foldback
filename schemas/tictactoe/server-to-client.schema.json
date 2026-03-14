@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tic-Tac-Toe Server-to-Client Messages",
+  "description": "Messages sent by the Lisp server to JS clients. Full state every tick (no deltas).",
+  "oneOf": [
+    {
+      "title": "Welcome",
+      "type": "object",
+      "properties": {
+        "YOUR_ID": { "type": "integer" },
+        "GAME_ID": { "const": "tictactoe" },
+        "TICK_RATE": { "type": "integer" }
+      },
+      "required": ["YOUR_ID", "GAME_ID", "TICK_RATE"]
+    },
+    {
+      "title": "Pong",
+      "type": "object",
+      "properties": {
+        "PONG": { "type": "number" }
+      },
+      "required": ["PONG"]
+    },
+    {
+      "title": "GameState",
+      "type": "object",
+      "properties": {
+        "TICK": { "type": "integer" },
+        "STATUS": { "enum": ["WAITING", "ACTIVE", "X_WINS", "O_WINS", "DRAW"] },
+        "TURN": { "type": "integer", "enum": [0, 1], "description": "0 = X's turn, 1 = O's turn" },
+        "BOARD": {
+          "type": "array",
+          "items": { "type": ["integer", "null"], "enum": [0, 1, null] },
+          "minItems": 9,
+          "maxItems": 9,
+          "description": "9 cells, row-major. null=empty, 0=X, 1=O"
+        },
+        "PLAYERS": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ID": { "type": "integer" },
+              "SIDE": { "type": "integer", "enum": [0, 1] }
+            },
+            "required": ["ID", "SIDE"]
+          }
+        }
+      },
+      "required": ["TICK", "STATUS", "TURN", "BOARD", "PLAYERS"]
+    }
+  ]
+}
