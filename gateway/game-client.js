@@ -174,7 +174,7 @@ export function createGameClient(config) {
     }
 
     function connectWS() {
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        const ws = new WebSocket(`ws://${window.location.host}/ws/${gameName}`);
         ws.onopen = onOpen;
         ws.onmessage = (e) => onMessage(e.data);
         connection = { send: (data) => ws.send(data), isOpen: () => ws.readyState === WebSocket.OPEN };
@@ -195,7 +195,7 @@ export function createGameClient(config) {
                 if (pc.iceGatheringState === 'complete') { clearTimeout(timeout); resolve(); }
             };
         });
-        const response = await fetch('/offer', { method: 'POST', body: JSON.stringify(pc.localDescription) });
+        const response = await fetch(`/offer/${gameName}`, { method: 'POST', body: JSON.stringify(pc.localDescription) });
         const answer = await response.json();
         await pc.setRemoteDescription(answer);
     }

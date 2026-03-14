@@ -22,7 +22,7 @@ check-lisp:
 		 --eval "(uiop:quit)"
 
 gateway:
-	cd gateway && go run main.go
+	cd gateway && go run main.go $(ARGS)
 
 lisp-bomberman:
 	sbcl --load foldback.asd \

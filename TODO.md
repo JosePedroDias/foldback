@@ -8,4 +8,7 @@
   - DONE: `prediction: false` mode in `createGameClient` + tic-tac-toe game (no CSP, no hidden state, turn-based at 10Hz)
   - DONE: Go Fish (no CSP, with hidden state) — per-player serialization in server broadcast, 2-5 players, ready-up phase, hidden hands
 
-- it would be great if scaling of game servers would depend on requests. this would require the gateway to be able to know which ip/port of game servers would be online and how many clients each has (updated periodically)
+- gateway should be able to spawn and manage game servers on demand
+  - WIP: `--spawn` flag added to gateway. When enabled, the gateway spawns at most one sbcl instance per game on demand (first client request triggers it), using auto-assigned ports starting at 4445. Clients connect via `/ws/{game}` and `/offer/{game}` paths. Game registry is hardcoded in Go. Spawned processes are cleaned up on gateway shutdown (SIGINT/SIGTERM). Without `--spawn`, the gateway works as before, routing all traffic to the default Lisp server on :4444.
+  - TODO: landing page listing available games with links
+  - TODO: scaling beyond one instance per game (multiple sessions, load-based spawning)

@@ -5,7 +5,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestClientStruct(t *testing.T) {
-	c := &Client{ID: "test-client"}
-	assert.Equal(t, "test-client", c.ID)
+func TestGameRegistry(t *testing.T) {
+	names := gameNames()
+	assert.Contains(t, names, "pong")
+	assert.Contains(t, names, "bomberman")
+	assert.Contains(t, names, "gofish")
 }

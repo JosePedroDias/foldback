@@ -1,12 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,24 +23,57 @@ import (
 )
 
 const (
-	LispServerAddr = "127.0.0.1:4444"
-	SignalingPort  = ":8080"
-	STUNPort       = 3478
+	DefaultLispAddr = "127.0.0.1:4444"
+	SignalingPort    = ":8080"
+	STUNPort         = 3478
+	SpawnBasePort    = 4445
+)
+
+// GameDef defines how to spawn a Lisp game server.
+// SBCLEval is a format string with %d for the port.
+type GameDef struct {
+	Eval string
+}
+
+// Registry of all known games and their sbcl start-server eval strings.
+// Port is injected via fmt.Sprintf at spawn time.
+var gameRegistry = map[string]GameDef{
+	"airhockey": {
+		Eval: `(foldback:start-server :port %d :game-id "airhockey" :simulation-fn #'foldback:airhockey-update :serialization-fn #'foldback:airhockey-serialize :join-fn #'foldback:airhockey-join)`,
+	},
+	"bomberman": {
+		Eval: `(let* ((level (foldback:make-bomberman-map)) (bots (foldback:spawn-bots level 3))) (foldback:start-server :port %d :game-id "bomberman" :simulation-fn #'foldback:bomberman-update :serialization-fn #'foldback:bomberman-serialize :join-fn #'foldback:bomberman-join :initial-custom-state (fset:map (:level level) (:bots bots) (:seed 123))))`,
+	},
+	"gofish": {
+		Eval: `(foldback:start-server :port %d :game-id "gofish" :simulation-fn #'foldback:gf-update :serialization-fn #'foldback:gf-serialize :join-fn #'foldback:gf-join :tick-rate 10 :initial-custom-state (fset:map (:seed 12345)))`,
+	},
+	"jumpnbump": {
+		Eval: `(foldback:start-server :port %d :game-id "jumpnbump" :simulation-fn #'foldback:jnb-update :serialization-fn #'foldback:jnb-serialize :join-fn #'foldback:jnb-join :initial-custom-state (fset:map (:seed 123)))`,
+	},
+	"pong": {
+		Eval: `(foldback:start-server :port %d :game-id "pong" :simulation-fn #'foldback:pong-update :serialization-fn #'foldback:pong-serialize :join-fn #'foldback:pong-join)`,
+	},
+	"tictactoe": {
+		Eval: `(foldback:start-server :port %d :game-id "tictactoe" :simulation-fn #'foldback:ttt-update :serialization-fn #'foldback:ttt-serialize :join-fn #'foldback:ttt-join :tick-rate 10)`,
+	},
+}
+
+type SpawnedGame struct {
+	Port int
+	Cmd  *exec.Cmd
+	Ready chan struct{} // closed when the game server is ready
+}
+
+var (
+	spawnMode    bool
+	spawnedGames = make(map[string]*SpawnedGame)
+	spawnMu      sync.Mutex
+	nextPort     = SpawnBasePort
 )
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
-
-type Client struct {
-	ID      string
-	UDPConn *net.UDPConn
-}
-
-var (
-	clients = make(map[string]*Client)
-	mu      sync.Mutex
-)
 
 func startSTUN() {
 	udpListener, err := net.ListenPacket("udp4", fmt.Sprintf("0.0.0.0:%d", STUNPort))
@@ -63,32 +103,200 @@ func startSTUN() {
 	fmt.Printf("STUN server started on :%d\n", STUNPort)
 }
 
+// resolveAddr returns the UDP address for a game.
+// In spawn mode, it spawns the game on demand if needed.
+// Without spawn mode, all games route to DefaultLispAddr.
+func resolveAddr(game string) (string, error) {
+	if !spawnMode {
+		return DefaultLispAddr, nil
+	}
+	if game == "" {
+		return "", fmt.Errorf("spawn mode requires a game name in the URL path")
+	}
+	sg, err := ensureSpawned(game)
+	if err != nil {
+		return "", err
+	}
+	// Wait for the game to be ready
+	<-sg.Ready
+	return fmt.Sprintf("127.0.0.1:%d", sg.Port), nil
+}
+
+// ensureSpawned starts a game server if it isn't already running.
+func ensureSpawned(game string) (*SpawnedGame, error) {
+	spawnMu.Lock()
+	defer spawnMu.Unlock()
+
+	if sg, ok := spawnedGames[game]; ok {
+		return sg, nil
+	}
+
+	def, ok := gameRegistry[game]
+	if !ok {
+		return nil, fmt.Errorf("unknown game: %s", game)
+	}
+
+	port := nextPort
+	nextPort++
+
+	eval := fmt.Sprintf(def.Eval, port)
+
+	// Run sbcl from the project root (parent of gateway/)
+	projectRoot := ".."
+	cmd := exec.Command("sbcl",
+		"--load", "foldback.asd",
+		"--eval", "(ql:quickload :foldback)",
+		"--eval", eval,
+	)
+	cmd.Dir = projectRoot
+
+	ready := make(chan struct{})
+	sg := &SpawnedGame{Port: port, Cmd: cmd, Ready: ready}
+	spawnedGames[game] = sg
+
+	// Capture stdout to detect readiness
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		delete(spawnedGames, game)
+		return nil, fmt.Errorf("failed to capture stdout for %s: %w", game, err)
+	}
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		delete(spawnedGames, game)
+		return nil, fmt.Errorf("failed to start %s: %w", game, err)
+	}
+
+	fmt.Printf("Spawning %s on port %d (pid %d)\n", game, port, cmd.Process.Pid)
+
+	// Watch stdout for the ready message
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Printf("[%s] %s\n", game, line)
+			if strings.Contains(line, "FoldBack Engine Started") {
+				close(ready)
+			}
+		}
+	}()
+
+	// Monitor process exit
+	go func() {
+		err := cmd.Wait()
+		spawnMu.Lock()
+		delete(spawnedGames, game)
+		spawnMu.Unlock()
+		if err != nil {
+			fmt.Printf("Game %s exited with error: %v\n", game, err)
+		} else {
+			fmt.Printf("Game %s exited\n", game)
+		}
+	}()
+
+	return sg, nil
+}
+
+// shutdownAll kills all spawned game processes.
+func shutdownAll() {
+	spawnMu.Lock()
+	defer spawnMu.Unlock()
+	for name, sg := range spawnedGames {
+		fmt.Printf("Stopping %s (pid %d)\n", name, sg.Cmd.Process.Pid)
+		sg.Cmd.Process.Signal(syscall.SIGTERM)
+	}
+}
+
 func main() {
+	flag.BoolVar(&spawnMode, "spawn", false, "Auto-spawn Lisp game servers on demand")
+	flag.Parse()
+
+	if spawnMode {
+		fmt.Println("Spawn mode enabled — game servers will be started on demand")
+		fmt.Printf("Available games: %s\n", strings.Join(gameNames(), ", "))
+	}
+
+	// Clean up spawned processes on exit
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		fmt.Println("\nShutting down...")
+		shutdownAll()
+		os.Exit(0)
+	}()
+
 	// 1. Local STUN server for WebRTC
 	startSTUN()
 
 	// 2. Endpoints
-	http.HandleFunc("/offer", handleOffer)
+	// Game-specific paths (preferred)
+	http.HandleFunc("/ws/{game}", handleWS)
+	http.HandleFunc("/offer/{game}", handleOffer)
+	// Legacy paths (no game in URL — routes to DefaultLispAddr)
 	http.HandleFunc("/ws", handleWS)
+	http.HandleFunc("/offer", handleOffer)
+	// Game list API
+	http.HandleFunc("/games", handleGames)
 	http.Handle("/", http.FileServer(http.Dir(".")))
 
 	fmt.Printf("FoldBack Gateway started at %s (Signaling, WS, and Frontend)\n", SignalingPort)
 	log.Fatal(http.ListenAndServe(SignalingPort, nil))
 }
 
+func gameNames() []string {
+	names := make([]string, 0, len(gameRegistry))
+	for name := range gameRegistry {
+		names = append(names, name)
+	}
+	return names
+}
+
+func handleGames(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	type gameInfo struct {
+		Name    string `json:"name"`
+		Running bool   `json:"running"`
+		Port    int    `json:"port,omitempty"`
+	}
+
+	spawnMu.Lock()
+	games := make([]gameInfo, 0, len(gameRegistry))
+	for name := range gameRegistry {
+		info := gameInfo{Name: name}
+		if sg, ok := spawnedGames[name]; ok {
+			info.Running = true
+			info.Port = sg.Port
+		}
+		games = append(games, info)
+	}
+	spawnMu.Unlock()
+
+	json.NewEncoder(w).Encode(games)
+}
+
 func handleWS(w http.ResponseWriter, r *http.Request) {
+	game := r.PathValue("game")
+
+	addr, err := resolveAddr(game)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WS Upgrade Error: %v", err)
 		return
 	}
-	
-	clientID := uuid.New().String()
-	fmt.Printf("New WS Client: %s\n", clientID)
 
-	udpAddr, _ := net.ResolveUDPAddr("udp", LispServerAddr)
+	clientID := uuid.New().String()
+	fmt.Printf("New WS Client: %s -> %s\n", clientID, addr)
+
+	udpAddr, _ := net.ResolveUDPAddr("udp", addr)
 	udpConn, _ := net.DialUDP("udp", nil, udpAddr)
-	
+
 	// Ensure we notify Lisp server on leave
 	defer func() {
 		fmt.Printf("WS Client Left: %s\n", clientID)
@@ -122,6 +330,14 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleOffer(w http.ResponseWriter, r *http.Request) {
+	game := r.PathValue("game")
+
+	addr, err := resolveAddr(game)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	var offer webrtc.SessionDescription
 	if err := json.NewDecoder(r.Body).Decode(&offer); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -162,7 +378,7 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		fmt.Printf("New WebRTC DataChannel: %s\n", clientID)
 
-		udpAddr, _ := net.ResolveUDPAddr("udp", LispServerAddr)
+		udpAddr, _ := net.ResolveUDPAddr("udp", addr)
 		udpConn, _ = net.DialUDP("udp", nil, udpAddr)
 
 		d.OnClose(func() {
