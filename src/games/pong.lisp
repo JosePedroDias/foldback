@@ -203,12 +203,5 @@
       (setf (gethash (keyword-to-json-key :ball) obj)
             (json-obj :x (fset:lookup ball :x) :y (fset:lookup ball :y)
                       :vx (fset:lookup ball :vx) :vy (fset:lookup ball :vy))))
-    (let ((p-list nil))
-      (fset:do-map (id p players)
-        (push (json-obj :id id :side (fset:lookup p :side)
-                        :x (fset:lookup p :x) :y (fset:lookup p :y)
-                        :score (fset:lookup p :sc))
-              p-list))
-      (when p-list
-        (setf (gethash (keyword-to-json-key :players) obj) (coerce (nreverse p-list) 'vector))))
+    (serialize-player-list obj players :side :x :y '(:score :sc))
     (to-json obj)))

@@ -63,6 +63,7 @@
            #:keyword-to-json-key
            #:json-key-to-keyword
            #:parse-client-message
+           #:serialize-player-list
            #:fb-next-rand
            #:fb-rand-int
 

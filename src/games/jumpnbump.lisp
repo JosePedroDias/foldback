@@ -164,18 +164,10 @@
          (seed (or (fset:lookup custom :seed) 0))
          (tick (fset:lookup state :tick))
          (obj (json-obj :tick tick :seed seed)))
-    (let ((p-list nil))
-      (fset:do-map (id p players)
-        (push (json-obj :id id
-                        :x (fset:lookup p :x) :y (fset:lookup p :y)
-                        :vx (fset:lookup p :vx) :vy (fset:lookup p :vy)
-                        :health (fset:lookup p :h)
-                        :dir (fset:lookup p :dir)
-                        :on-ground (if (fset:lookup p :on-ground) 1 0)
-                        :kills (or (fset:lookup p :k) 0))
-              p-list))
-      (when p-list
-        (setf (gethash (keyword-to-json-key :players) obj) (coerce (nreverse p-list) 'vector))))
+    (serialize-player-list obj players :x :y :vx :vy
+      '(:health :h) :dir
+      (list :on-ground :on-ground (lambda (v) (if v 1 0)))
+      (list :kills :k (lambda (v) (or v 0))))
     (to-json obj)))
 
 (defun jnb-join (player-id state)

@@ -48,6 +48,33 @@
 ;; A simple deterministic LCG (Linear Congruential Generator)
 ;; This ensures that (fb-next-rand 123) always returns the same value 
 ;; on any platform (Lisp, JS, etc.)
+(defun serialize-player-list (obj players &rest field-specs)
+  "Serialize an fset:map of players into a PLAYERS JSON array on OBJ.
+   ID is always included from the map key. Each field-spec is one of:
+     :key                          - same json and state key
+     (:json-key :state-key)        - renamed lookup
+     (:json-key :state-key fn)     - renamed lookup with transform"
+  (let ((p-list nil))
+    (fset:do-map (id p players)
+      (let ((args nil))
+        (dolist (spec field-specs)
+          (cond
+            ((keywordp spec)
+             (push (fset:lookup p spec) args)
+             (push spec args))
+            ((= (length spec) 2)
+             (push (fset:lookup p (second spec)) args)
+             (push (first spec) args))
+            ((= (length spec) 3)
+             (push (funcall (third spec) (fset:lookup p (second spec))) args)
+             (push (first spec) args))))
+        (push id args)
+        (push :id args)
+        (push (apply #'json-obj args) p-list)))
+    (when p-list
+      (setf (gethash (keyword-to-json-key :players) obj)
+            (coerce (nreverse p-list) 'vector)))))
+
 (defun fb-next-rand (seed)
   "Returns a new seed and a normalized float [0, 1)."
   (let* ((new-seed (mod (+ (* seed 1103515245) 12345) 2147483648))

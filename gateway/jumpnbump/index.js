@@ -1,17 +1,16 @@
-import { FoldBackWorld, processServerMessage } from '../foldback-engine.js';
+import { createGameClient } from '../game-client.js';
 import { jnbUpdate, jnbApplyDelta, jnbSync, jnbRender, loadJnbAssets, spawnBlood } from './logic.js';
 import { fpToFloat } from '../fixed-point.js';
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const TILE_SIZE = 16;
+canvas.width = 400;
+canvas.height = 256;
 
-const urlParams = new URLSearchParams(window.location.search);
-const protocol = urlParams.get('protocol') || 'webrtc';
-
-const world = new FoldBackWorld("jumpnbump");
 const keys = new Set();
-let connection = { send: (data) => {}, isOpen: () => false };
+window.addEventListener('keydown', (e) => { keys.add(e.key.toLowerCase()); });
+window.addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); });
 
 // Sound Manager
 const sounds = {};
@@ -27,13 +26,13 @@ loadSound('spring', 'sfx/spring.ogg');
 function playSound(name) {
     if (sounds[name]) {
         sounds[name].currentTime = 0;
-        sounds[name].play().catch(() => {}); // Ignore user-gesture errors
+        sounds[name].play().catch(() => {});
     }
 }
 
 // Death detection — must run at simulation rate (per-tick), not render rate,
 // because JNB respawns instantly (1 tick dead). Render can miss the transition.
-const lastDeathTime = new Map(); // pid -> Date.now() when blood last spawned
+const lastDeathTime = new Map();
 function checkDeaths(before, after) {
     for (let id in after) {
         const bp = before[id];
@@ -58,150 +57,41 @@ function snapshotHealth(players) {
     return snap;
 }
 
-function onMessage(data) {
-    const before = snapshotHealth(world.localState.players);
-    const res = processServerMessage(world, data, jnbUpdate, jnbApplyDelta, jnbSync);
+let healthSnapshot = {};
+let prevRenderState = new Map();
 
-    if (res.type === 'abort') {
-        alert("Game ID Mismatch!");
-        return;
-    }
-
-    if (res.tick !== undefined) {
-        checkDeaths(before, world.localState.players);
-        const ahead = world.currentTick - res.tick;
-        const pCount = Object.keys(world.localState.players).length;
-        document.getElementById('netStats').innerText =
-            `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}) | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks} | Players: ${pCount}`;
-    }
-}
-
-async function init() {
-    console.log("Initializing Jump and Bump...");
-    try {
-        await loadJnbAssets();
-        console.log("Assets loaded, connecting...");
-        if (protocol === 'webrtc') connectWebRTC();
-        else connectWS();
-        requestAnimationFrame(gameLoop);
-    } catch (e) {
-        console.error("Initialization failed:", e);
-    }
-}
-
-let prevRenderState = new Map(); // for jump sounds (og transition lasts many ticks, safe in render)
-
-function tick() {
-    if (connection.isOpen() && world.myPlayerId !== null) {
-        // Limit how far we can get ahead of the server authoritative state
-        const serverTick = world.authoritativeState.tick;
-        if (world.currentTick - serverTick < world.maxLead) {
-            let dx = 0, jump = false;
-            if (keys.has('a')) dx = -1;
-            if (keys.has('d')) dx = 1;
-            if (keys.has(' ') || keys.has('w')) jump = true;
-
-            const nextTick = world.currentTick + 1;
-            const inputsForTick = {};
-
-            const input = { dx, jump, t: nextTick };
-            connection.send(JSON.stringify({ DX: dx, JUMP: jump, TICK: nextTick }));
-
-            inputsForTick[world.myPlayerId] = input;
-            if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
-            world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
-
-            const beforePrediction = snapshotHealth(world.localState.players);
-            world.localState = jnbUpdate(world.localState, inputsForTick);
-            checkDeaths(beforePrediction, world.localState.players);
-            world.currentTick = nextTick;
-            world.history.set(nextTick, JSON.parse(JSON.stringify(world.localState)));
+const { world } = createGameClient({
+    gameName: 'jumpnbump',
+    updateFn: jnbUpdate,
+    applyDeltaFn: jnbApplyDelta,
+    syncFn: jnbSync,
+    render: () => jnbRender(ctx, canvas, world.localState, TILE_SIZE, world.msPerTick),
+    getInput: (world) => {
+        let dx = 0, jump = false;
+        if (keys.has('a')) dx = -1;
+        if (keys.has('d')) dx = 1;
+        if (keys.has(' ') || keys.has('w')) jump = true;
+        healthSnapshot = snapshotHealth(world.localState.players);
+        return { local: { dx, jump }, wire: { DX: dx, JUMP: jump } };
+    },
+    onAfterInput: (world) => {
+        checkDeaths(healthSnapshot, world.localState.players);
+    },
+    onBeforeMessage: (world) => {
+        healthSnapshot = snapshotHealth(world.localState.players);
+    },
+    onAfterMessage: (world, res) => {
+        if (res.tick !== undefined) {
+            checkDeaths(healthSnapshot, world.localState.players);
         }
-
-        const now = Date.now();
-        if (now - world.lastPingTime > 500) {
-            const pingId = now;
-            world.pings.set(pingId, now);
-            connection.send(JSON.stringify({ TYPE: "PING", ID: pingId }));
-            world.lastPingTime = now;
+    },
+    onRender: () => {
+        for (let id in world.localState.players) {
+            const p = world.localState.players[id];
+            const prev = prevRenderState.get(id);
+            if (prev && !p.og && prev.og && p.vy < -1000) playSound('jump');
+            prevRenderState.set(id, { og: p.og });
         }
-    }
-}
-
-let lastFrameTime = 0;
-let tickAccumulator = 0;
-
-function gameLoop(now) {
-    if (lastFrameTime > 0) {
-        tickAccumulator = Math.min(tickAccumulator + (now - lastFrameTime), world.msPerTick * 10);
-    }
-    lastFrameTime = now;
-
-    while (tickAccumulator >= world.msPerTick) {
-        tick();
-        tickAccumulator -= world.msPerTick;
-    }
-
-    for (let id in world.localState.players) {
-        const p = world.localState.players[id];
-        const prev = prevRenderState.get(id);
-        if (prev && !p.og && prev.og && p.vy < -1000) playSound('jump');
-        prevRenderState.set(id, { og: p.og });
-    }
-    jnbRender(ctx, canvas, world.localState, TILE_SIZE, world.msPerTick);
-    requestAnimationFrame(gameLoop);
-}
-
-// Notify server immediately on tab close/navigation
-window.addEventListener('beforeunload', () => {
-    if (connection.isOpen()) {
-        connection.send(JSON.stringify({ TYPE: "LEAVE" }));
-    }
+    },
+    init: loadJnbAssets,
 });
-
-function onOpen() {
-    console.log("Connection Open!");
-    connection.send(JSON.stringify({ TYPE: "JOIN" }));
-    const joinRetry = setInterval(() => {
-        if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }
-        if (connection.isOpen()) connection.send(JSON.stringify({ TYPE: "JOIN" }));
-    }, 1000);
-}
-
-async function connectWS() {
-    const url = `ws://${window.location.host}/ws`;
-    console.log("Connecting to WS:", url);
-    const ws = new WebSocket(url);
-    ws.onopen = onOpen;
-    ws.onmessage = (e) => onMessage(e.data);
-    connection = { send: (data) => ws.send(data), isOpen: () => ws.readyState === WebSocket.OPEN };
-}
-
-async function connectWebRTC() {
-    console.log("Connecting to WebRTC...");
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: `stun:${window.location.hostname}:3478` }] });
-    const dc = pc.createDataChannel("foldback", { ordered: false, maxRetransmits: 0 });
-    dc.onopen = onOpen;
-    dc.onmessage = (e) => onMessage(e.data);
-    connection = { send: (data) => dc.send(data), isOpen: () => dc.readyState === "open" };
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await new Promise(resolve => {
-        if (pc.iceGatheringState === 'complete') return resolve();
-        const timeout = setTimeout(resolve, 2000);
-        pc.onicegatheringstatechange = () => {
-            if (pc.iceGatheringState === 'complete') { clearTimeout(timeout); resolve(); }
-        };
-    });
-    const response = await fetch('/offer', { method: 'POST', body: JSON.stringify(pc.localDescription) });
-    const answer = await response.json();
-    await pc.setRemoteDescription(answer);
-}
-
-window.addEventListener('keydown', (e) => { keys.add(e.key.toLowerCase()); });
-window.addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); });
-
-canvas.width = 400; 
-canvas.height = 256;
-
-init();
