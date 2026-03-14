@@ -80,6 +80,16 @@ make gateway
 
 Then open `http://localhost:8080` in a browser.
 
+### Spawn Mode
+
+Instead of manually starting game servers, the gateway can spawn and manage them on demand:
+
+```bash
+make gateway ARGS="--spawn"
+```
+
+In spawn mode, the gateway starts an SBCL instance for each game when the first client connects to it. Ports are auto-assigned starting at 4445. Idle game servers are automatically killed after a period of inactivity. A `/health` endpoint reports the status of all spawned servers. Clients connect via `/ws/{game}` and `/offer/{game}` paths. Spawned processes are cleaned up on gateway shutdown (SIGINT/SIGTERM).
+
 ## Testing
 
 ### Unit and Cross-Platform Tests

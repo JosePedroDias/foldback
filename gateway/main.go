@@ -59,9 +59,10 @@ var gameRegistry = map[string]GameDef{
 }
 
 type SpawnedGame struct {
-	Port int
-	Cmd  *exec.Cmd
-	Ready chan struct{} // closed when the game server is ready
+	Port      int
+	Cmd       *exec.Cmd
+	Ready     chan struct{} // closed when the game server is ready
+	StartedAt time.Time
 }
 
 var (
@@ -69,6 +70,10 @@ var (
 	spawnedGames = make(map[string]*SpawnedGame)
 	spawnMu      sync.Mutex
 	nextPort     = SpawnBasePort
+
+	// Per-game client count (works in both spawn and non-spawn mode)
+	clientCount   = make(map[string]int)
+	clientCountMu sync.Mutex
 )
 
 var upgrader = websocket.Upgrader{
@@ -151,7 +156,7 @@ func ensureSpawned(game string) (*SpawnedGame, error) {
 	cmd.Dir = projectRoot
 
 	ready := make(chan struct{})
-	sg := &SpawnedGame{Port: port, Cmd: cmd, Ready: ready}
+	sg := &SpawnedGame{Port: port, Cmd: cmd, Ready: ready, StartedAt: time.Now()}
 	spawnedGames[game] = sg
 
 	// Capture stdout to detect readiness
@@ -207,6 +212,50 @@ func shutdownAll() {
 	}
 }
 
+func clientConnect(game string) {
+	if game == "" {
+		return
+	}
+	clientCountMu.Lock()
+	clientCount[game]++
+	fmt.Printf("Game %s: %d player(s) connected\n", game, clientCount[game])
+	clientCountMu.Unlock()
+}
+
+func clientDisconnect(game string) {
+	if game == "" {
+		return
+	}
+	clientCountMu.Lock()
+	clientCount[game]--
+	remaining := clientCount[game]
+	if remaining <= 0 {
+		delete(clientCount, game)
+		remaining = 0
+	}
+	fmt.Printf("Game %s: %d player(s) connected\n", game, remaining)
+	clientCountMu.Unlock()
+
+	if remaining == 0 && spawnMode {
+		stopGame(game)
+	}
+}
+
+// stopGame kills a spawned game server and removes it from the map.
+func stopGame(game string) {
+	spawnMu.Lock()
+	sg, ok := spawnedGames[game]
+	if !ok {
+		spawnMu.Unlock()
+		return
+	}
+	delete(spawnedGames, game)
+	spawnMu.Unlock()
+
+	fmt.Printf("All players left %s — stopping server (pid %d)\n", game, sg.Cmd.Process.Pid)
+	sg.Cmd.Process.Signal(syscall.SIGTERM)
+}
+
 func main() {
 	flag.BoolVar(&spawnMode, "spawn", false, "Auto-spawn Lisp game servers on demand")
 	flag.Parse()
@@ -236,8 +285,9 @@ func main() {
 	// Legacy paths (no game in URL — routes to DefaultLispAddr)
 	http.HandleFunc("/ws", handleWS)
 	http.HandleFunc("/offer", handleOffer)
-	// Game list API
+	// Game list & health API
 	http.HandleFunc("/games", handleGames)
+	http.HandleFunc("/health", handleHealth)
 	http.Handle("/", http.FileServer(http.Dir(".")))
 
 	fmt.Printf("FoldBack Gateway started at %s (Signaling, WS, and Frontend)\n", SignalingPort)
@@ -276,6 +326,37 @@ func handleGames(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(games)
 }
 
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	type gameHealth struct {
+		Name      string     `json:"name"`
+		Running   bool       `json:"running"`
+		Port      int        `json:"port,omitempty"`
+		StartedAt *time.Time `json:"started_at,omitempty"`
+		Players   int        `json:"players"`
+	}
+
+	spawnMu.Lock()
+	clientCountMu.Lock()
+
+	games := make([]gameHealth, 0, len(gameRegistry))
+	for name := range gameRegistry {
+		info := gameHealth{Name: name, Players: clientCount[name]}
+		if sg, ok := spawnedGames[name]; ok {
+			info.Running = true
+			info.Port = sg.Port
+			info.StartedAt = &sg.StartedAt
+		}
+		games = append(games, info)
+	}
+
+	clientCountMu.Unlock()
+	spawnMu.Unlock()
+
+	json.NewEncoder(w).Encode(games)
+}
+
 func handleWS(w http.ResponseWriter, r *http.Request) {
 	game := r.PathValue("game")
 
@@ -293,6 +374,7 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 
 	clientID := uuid.New().String()
 	fmt.Printf("New WS Client: %s -> %s\n", clientID, addr)
+	clientConnect(game)
 
 	udpAddr, _ := net.ResolveUDPAddr("udp", addr)
 	udpConn, _ := net.DialUDP("udp", nil, udpAddr)
@@ -303,6 +385,7 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 		udpConn.Write([]byte(`{"TYPE":"LEAVE"}`))
 		udpConn.Close()
 		conn.Close()
+		clientDisconnect(game)
 	}()
 
 	// WS -> UDP
@@ -363,6 +446,7 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 				fmt.Printf("WebRTC Client Left: %s\n", clientID)
 				udpConn.Write([]byte(`{"TYPE":"LEAVE"}`))
 				udpConn.Close()
+				clientDisconnect(game)
 			}
 			peerConnection.Close()
 		})
@@ -377,6 +461,7 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		fmt.Printf("New WebRTC DataChannel: %s\n", clientID)
+		clientConnect(game)
 
 		udpAddr, _ := net.ResolveUDPAddr("udp", addr)
 		udpConn, _ = net.DialUDP("udp", nil, udpAddr)
