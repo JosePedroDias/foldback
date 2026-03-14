@@ -344,7 +344,8 @@
 
       (fset:with state-after-bots :players final-players))))
 
-(defun bomberman-serialize (state last-state)
+(defun bomberman-serialize (state last-state &optional player-id)
+  (declare (ignore player-id))
   (let* ((players (fset:lookup state :players))
          (custom  (fset:lookup state :custom-state))
          (level   (fset:lookup custom :level))

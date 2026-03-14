@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Go Fish Server → Client Messages",
+  "oneOf": [
+    {
+      "title": "Welcome",
+      "type": "object",
+      "properties": {
+        "YOUR_ID": { "type": "integer" },
+        "GAME_ID": { "const": "gofish" },
+        "TICK_RATE": { "type": "integer" }
+      },
+      "required": ["YOUR_ID", "GAME_ID", "TICK_RATE"]
+    },
+    {
+      "title": "Pong",
+      "type": "object",
+      "properties": {
+        "PONG": { "type": "integer" }
+      },
+      "required": ["PONG"]
+    },
+    {
+      "title": "Game State",
+      "description": "Per-player game state (hidden information: own hand has full card data, others show count only)",
+      "type": "object",
+      "properties": {
+        "TICK": { "type": "integer" },
+        "STATUS": { "enum": ["WAITING", "READY_UP", "ACTIVE", "GAME_OVER"] },
+        "TURN": { "type": "integer", "description": "Seat index of current turn player" },
+        "DECK_COUNT": { "type": "integer", "description": "Number of cards remaining in draw pile" },
+        "HANDS": {
+          "type": "object",
+          "description": "Keyed by seat index (string). Own hand is array of {RANK, SUIT}. Others are integer (card count).",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "RANK": { "type": "integer", "minimum": 1, "maximum": 13 },
+                    "SUIT": { "type": "integer", "minimum": 0, "maximum": 3 }
+                  },
+                  "required": ["RANK", "SUIT"]
+                }
+              },
+              { "type": "integer", "description": "Card count for other players" }
+            ]
+          }
+        },
+        "BOOKS": {
+          "type": "object",
+          "description": "Keyed by seat index (string). Array of rank integers that player has completed.",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 1, "maximum": 13 }
+          }
+        },
+        "LAST_ASK": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "properties": {
+                "SEAT": { "type": "integer", "description": "Who asked" },
+                "TARGET": { "type": "integer", "description": "Who was asked" },
+                "RANK": { "type": "integer", "description": "What rank" },
+                "GOT": { "type": "integer", "description": "How many cards received (0 = Go Fish)" },
+                "DREW_MATCH": { "type": "boolean", "description": "If Go Fish, did the drawn card match?" }
+              },
+              "required": ["SEAT", "TARGET", "RANK", "GOT"]
+            }
+          ]
+        },
+        "PLAYERS": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ID": { "type": "integer" },
+              "SEAT": { "type": "integer" },
+              "READY": { "type": "boolean" }
+            },
+            "required": ["ID", "SEAT", "READY"]
+          }
+        }
+      },
+      "required": ["TICK", "STATUS", "TURN", "DECK_COUNT", "HANDS", "BOOKS", "PLAYERS"]
+    }
+  ]
+}

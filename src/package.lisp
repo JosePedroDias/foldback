@@ -88,4 +88,9 @@
            ;; Tic-Tac-Toe Game Logic
            #:ttt-join
            #:ttt-update
-           #:ttt-serialize))
+           #:ttt-serialize
+
+           ;; Go Fish Game Logic
+           #:gf-join
+           #:gf-update
+           #:gf-serialize))

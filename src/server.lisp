@@ -156,7 +156,7 @@
                     (let* ((host (first client-key))
                            (port (second client-key))
                            (last-s (fset:lookup last-client-states p-id))
-                           (msg   (funcall serialization-fn new-state last-s)))
+                           (msg   (funcall serialization-fn new-state last-s p-id)))
                       (when (and msg (> (length msg) 0))
                         (incf (metrics-bytes-sent *current-metrics*) (length msg))
                         (ignore-errors

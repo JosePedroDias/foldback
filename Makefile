@@ -1,4 +1,4 @@
-.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong lisp-tictactoe gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-tictactoe test-fixed-point test-bomberman-unit test-bomberman-respawn test-bomberman-stress benchmark check-lisp check-parens alive-lsp kill-servers kill-game kill-gateway
+.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong lisp-tictactoe lisp-gofish gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-tictactoe test-gofish test-fixed-point test-bomberman-unit test-bomberman-respawn test-bomberman-stress benchmark check-lisp check-parens alive-lsp kill-servers kill-game kill-gateway
 
 all: lisp-bomberman gateway
 
@@ -44,12 +44,17 @@ lisp-pong:
 		 --eval "(ql:quickload :foldback)" \
 		 --eval "(foldback:start-server :game-id \"pong\" :simulation-fn #'foldback:pong-update :serialization-fn #'foldback:pong-serialize :join-fn #'foldback:pong-join)"
 
+lisp-gofish:
+	sbcl --load foldback.asd \
+		 --eval "(ql:quickload :foldback)" \
+		 --eval "(foldback:start-server :game-id \"gofish\" :simulation-fn #'foldback:gf-update :serialization-fn #'foldback:gf-serialize :join-fn #'foldback:gf-join :tick-rate 10 :initial-custom-state (fset:map (:seed 12345)))"
+
 lisp-tictactoe:
 	sbcl --load foldback.asd \
 		 --eval "(ql:quickload :foldback)" \
 		 --eval "(foldback:start-server :game-id \"tictactoe\" :simulation-fn #'foldback:ttt-update :serialization-fn #'foldback:ttt-serialize :join-fn #'foldback:ttt-join :tick-rate 10)"
 
-test: test-lisp test-gateway test-engine test-server-flow test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-tictactoe
+test: test-lisp test-gateway test-engine test-server-flow test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-tictactoe test-gofish
 
 test-lisp:
 	sbcl --non-interactive \
@@ -122,6 +127,18 @@ test-tictactoe:
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/tictactoe-test.lisp
+	@echo "\n--- Running Tic-Tac-Toe Cross-Platform Tests (JS) ---"
+	node tests/tictactoe-cross-test.js
+
+test-gofish:
+	@echo "--- Running Go Fish Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/gofish-test.lisp \
+		 --load tests/gofish-serialize-dump.lisp
+	@echo "\n--- Running Go Fish Cross-Platform Tests (JS) ---"
+	node tests/gofish-cross-test.js
 
 test-fixed-point:
 	@echo "--- Running Fixed-Point Cross-Platform Tests (JS) ---"

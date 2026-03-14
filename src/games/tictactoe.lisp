@@ -122,8 +122,8 @@
     (fset:map (:tick next-tick) (:players players)
               (:board board) (:turn turn) (:status status))))
 
-(defun ttt-serialize (state last-state)
-  (declare (ignore last-state))
+(defun ttt-serialize (state last-state &optional player-id)
+  (declare (ignore last-state player-id))
   (let* ((players (fset:lookup state :players))
          (board (or (fset:lookup state :board) (ttt-empty-board)))
          (tick (fset:lookup state :tick))

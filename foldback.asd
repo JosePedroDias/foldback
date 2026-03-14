@@ -17,6 +17,7 @@
                    (:file "airhockey")
                    (:file "jumpnbump")
                    (:file "pong")
-                   (:file "tictactoe")))
+                   (:file "tictactoe")
+                   (:file "gofish")))
                  (:file "engine")
                  (:file "server")))))

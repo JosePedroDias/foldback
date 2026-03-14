@@ -45,12 +45,13 @@ Each game provides 3 Lisp functions (join, update, serialize) and a JavaScript c
 | Game | Source | Mode | Key Mechanic |
 |------|--------|------|-------------|
 | Tic-Tac-Toe | [GDD](docs/GDDs/TICTACTOE.md), `src/games/tictactoe.lisp` | Authoritative-only | Turn-based, no CSP — simplest example |
+| Go Fish | [GDD](docs/GDDs/GOFISH.md), `src/games/gofish.lisp` | Authoritative-only | 2-5 players, hidden state (per-player serialization) |
 | Pong | [GDD](docs/GDDs/PONG.md), `src/games/pong.lisp` | CSP | Tutorial game — simplest CSP example |
 | Bomberman | [GDD](docs/GDDs/BOMBERMAN.md), `src/games/bomberman.lisp` | CSP | Bomb placement, chain reactions, bot AI |
 | Air Hockey | [GDD](docs/GDDs/AIRHOCKEY.md), `src/games/airhockey.lisp` | CSP | 1:1 paddle tracking, puck bounces, scoring to 11 |
 | Jump and Bump | [GDD](docs/GDDs/JUMPNBUMP.md), `src/games/jumpnbump.lisp` | CSP | Platformer: head-stomping, screen wrapping |
 
-CSP games have their simulation mirrored in JavaScript under `gateway/[game]/logic.js`. Authoritative-only games only need rendering and input handling on the client.
+CSP games have their simulation mirrored in JavaScript under `gateway/[game]/logic.js`. Authoritative-only games only need rendering and input handling on the client. Go Fish demonstrates per-player serialization for hidden state — each player sees their own hand but only card counts for opponents.
 
 ## Getting Started
 
@@ -67,6 +68,7 @@ make setup
 
 # Terminal 1 — start a game server (pick one)
 make lisp-tictactoe
+make lisp-gofish
 make lisp-pong
 make lisp-bomberman
 make lisp-airhockey
@@ -103,4 +105,5 @@ Launches two headless browsers and verifies that players can connect, see each o
 
 - [Tutorial: Building Games with FoldBack](docs/TUTORIAL.md) — authoritative-only and CSP modes, state contract, wiring, and a new-game checklist
 - [Debugging Reference](docs/DEBUGGING.md) — SBCL/FSet/ASDF gotchas and solutions
-- Game Design Documents: [Tic-Tac-Toe](docs/GDDs/TICTACTOE.md), [Pong](docs/GDDs/PONG.md), [Bomberman](docs/GDDs/BOMBERMAN.md), [Air Hockey](docs/GDDs/AIRHOCKEY.md), [Jump and Bump](docs/GDDs/JUMPNBUMP.md)
+- Game Design Documents: [Tic-Tac-Toe](docs/GDDs/TICTACTOE.md), [Go Fish](docs/GDDs/GOFISH.md), [Pong](docs/GDDs/PONG.md), [Bomberman](docs/GDDs/BOMBERMAN.md), [Air Hockey](docs/GDDs/AIRHOCKEY.md), [Jump and Bump](docs/GDDs/JUMPNBUMP.md)
+- Wire Protocol Schemas: `schemas/[game]/` — JSON Schema definitions for each game's messages

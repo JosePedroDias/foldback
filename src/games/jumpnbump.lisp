@@ -157,8 +157,8 @@
       (let ((next-custom (fset:with custom :seed seed)))
         (fset:with (fset:with (fset:with state :players final-players) :custom-state next-custom) :tick (1+ tick))))))
 
-(defun jnb-serialize (state last-state)
-  (declare (ignore last-state))
+(defun jnb-serialize (state last-state &optional player-id)
+  (declare (ignore last-state player-id))
   (let* ((players (fset:lookup state :players))
          (custom (fset:lookup state :custom-state))
          (seed (or (fset:lookup custom :seed) 0))

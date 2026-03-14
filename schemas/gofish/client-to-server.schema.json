@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Go Fish Client → Server Messages",
+  "oneOf": [
+    {
+      "title": "Ask for cards",
+      "description": "Ask a target player for all cards of a specific rank",
+      "type": "object",
+      "properties": {
+        "RANK": { "type": "integer", "minimum": 1, "maximum": 13, "description": "Card rank (1=A, 2-10, 11=J, 12=Q, 13=K)" },
+        "TARGET": { "type": "integer", "minimum": 0, "maximum": 4, "description": "Seat index of the player being asked" }
+      },
+      "required": ["RANK", "TARGET"]
+    },
+    {
+      "title": "Ready",
+      "description": "Signal readiness to start the game",
+      "type": "object",
+      "properties": {
+        "TYPE": { "const": "READY" }
+      },
+      "required": ["TYPE"]
+    },
+    {
+      "title": "Rematch",
+      "description": "Request a new game after game over",
+      "type": "object",
+      "properties": {
+        "TYPE": { "const": "REMATCH" }
+      },
+      "required": ["TYPE"]
+    },
+    {
+      "title": "Ping",
+      "type": "object",
+      "properties": {
+        "TYPE": { "const": "PING" },
+        "ID": { "type": "integer" }
+      },
+      "required": ["TYPE", "ID"]
+    },
+    {
+      "title": "Join",
+      "type": "object",
+      "properties": {
+        "TYPE": { "const": "JOIN" }
+      },
+      "required": ["TYPE"]
+    },
+    {
+      "title": "Leave",
+      "type": "object",
+      "properties": {
+        "TYPE": { "const": "LEAVE" }
+      },
+      "required": ["TYPE"]
+    }
+  ]
+}

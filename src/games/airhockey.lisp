@@ -238,8 +238,8 @@
         (setf final-state (fset:with final-state :win-tick (1+ tick))))
       final-state)))
 
-(defun airhockey-serialize (state last-state)
-  (declare (ignore last-state))
+(defun airhockey-serialize (state last-state &optional player-id)
+  (declare (ignore last-state player-id))
   (let* ((players (fset:lookup state :players))
          (puck (fset:lookup state :puck))
          (tick (fset:lookup state :tick))

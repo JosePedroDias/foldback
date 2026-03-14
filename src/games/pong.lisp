@@ -189,8 +189,8 @@
     (fset:map (:tick next-tick) (:players new-players)
               (:ball ball) (:status status))))
 
-(defun pong-serialize (state last-state)
-  (declare (ignore last-state))
+(defun pong-serialize (state last-state &optional player-id)
+  (declare (ignore last-state player-id))
   (let* ((players (fset:lookup state :players))
          (ball (fset:lookup state :ball))
          (tick (fset:lookup state :tick))
