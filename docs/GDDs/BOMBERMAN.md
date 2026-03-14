@@ -70,7 +70,7 @@ Players can stand on a bomb they placed (they were overlapping when it was creat
 
 ## Controls
 
-**Input format**: `(:dx -1|0|1 :dy -1|0|1 :drop-bomb t :t <tick>)`
+**Input format**: `{"DX": -1|0|1, "DY": -1|0|1, "DROP_BOMB": true|false, "TICK": <tick>}`
 
 - `dx`, `dy`: movement direction (multiplied by 100 FP internally)
 - `drop-bomb`: when truthy, place a bomb at the player's current grid tile

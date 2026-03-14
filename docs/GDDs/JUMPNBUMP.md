@@ -81,7 +81,7 @@ On squish:
 
 ## Controls
 
-**Input format**: `(:dx -1|0|1 :jump t :t <tick>)`
+**Input format**: `{"DX": -1|0|1, "JUMP": true|false, "TICK": <tick>}`
 
 - `dx`: horizontal movement direction (-1 = left, 0 = none, 1 = right)
 - `jump`: when truthy and player is on ground, apply jump force

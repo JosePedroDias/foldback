@@ -54,7 +54,7 @@ On goal or game start: all paddle y-positions reset to 0, ball resets to (0,0) w
 
 ## Controls
 
-**Input format**: `(:ty <target_y> :t <tick>)`
+**Input format**: `{"TARGET_Y": <target_y>, "TICK": <tick>}`
 
 Paddles move vertically to the target y-position each tick. The paddle x-position is fixed. The target y is clamped to keep the paddle within the table:
 - min_y = -TABLE_H/2 + PADDLE_HALF_H = -3250

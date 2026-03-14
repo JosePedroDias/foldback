@@ -159,7 +159,7 @@ The full implementation is in `src/games/pong.lisp`. It chains the mechanics fro
 
 #### 3. `pong-serialize (state last-state) -> json-string`
 
-Generates the delta broadcast to all clients. Returns a JSON string. Must include a `"t"` field (tick number).
+Generates the delta broadcast to all clients. Returns a JSON string with UPPERCASE keys. Must include a `"TICK"` field.
 
 ```lisp
 (defun pong-serialize (state last-state)
@@ -168,14 +168,16 @@ Generates the delta broadcast to all clients. Returns a JSON string. Must includ
          (ball (fset:lookup state :ball))
          (tick (fset:lookup state :tick))
          (status (or (fset:lookup state :status) :waiting))
-         (obj (json-obj "t" tick "s" (symbol-name status))))
+         (obj (json-obj :tick tick :status status)))
     (when ball
-      (setf (gethash "bl" obj)
-            (json-obj "x" (fset:lookup ball :x) "y" (fset:lookup ball :y)
-                      "vx" (fset:lookup ball :vx) "vy" (fset:lookup ball :vy))))
-    ;; ... serialize players array into "p":[...] ...
+      (setf (gethash (keyword-to-json-key :ball) obj)
+            (json-obj :x (fset:lookup ball :x) :y (fset:lookup ball :y)
+                      :vx (fset:lookup ball :vx) :vy (fset:lookup ball :vy))))
+    (serialize-player-list obj players :side :x :y '(:score :sc))
     (to-json obj)))
 ```
+
+The `json-obj` helper auto-converts keyword keys to UPPERCASE (`:tick` → `"TICK"`, `:status` → `"STATUS"`) and keyword values to UPPERCASE strings (`:active` → `"ACTIVE"`). The `serialize-player-list` helper handles the boilerplate of iterating players into a JSON array, always including `:id` from the map key.
 
 Pong serializes the full state every tick (no delta optimization). For a more complex game you would compare `state` to `last-state` and only send what changed.
 
@@ -189,22 +191,31 @@ Full implementation: `gateway/pong/logic.js`
 
 #### 5. `pongApplyDelta(baseState, delta) -> mergedState`
 
-Interprets a server delta (parsed JSON) and merges it into the client's state:
+Interprets a server delta (parsed JSON) and merges it into the client's state. The keys are UPPERCASE on the wire, mapped to internal lowercase:
 
 ```javascript
 export function pongApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
-    newState.tick = delta.t;
-    newState.status = delta.s;
-    if (delta.bl) newState.ball = delta.bl;
-    if (delta.p) {
-        delta.p.forEach(dp => { newState.players[dp.id] = dp; });
+    newState.tick = delta.TICK;
+    newState.status = delta.STATUS;
+    newState.winTick = delta.WIN_TICK;
+    if (delta.BALL) {
+        newState.ball = { x: delta.BALL.X, y: delta.BALL.Y, vx: delta.BALL.VX, vy: delta.BALL.VY };
+    } else {
+        newState.ball = null;
+    }
+    if (delta.PLAYERS) {
+        const newPlayers = {};
+        delta.PLAYERS.forEach(dp => {
+            newPlayers[dp.ID] = { id: dp.ID, side: dp.SIDE, x: dp.X, y: dp.Y, sc: dp.SCORE };
+        });
+        newState.players = newPlayers;
     }
     return newState;
 }
 ```
 
-The keys (`t`, `s`, `bl`, `p`) match whatever your `pong-serialize` emits.
+The UPPERCASE keys (`TICK`, `STATUS`, `BALL`, `PLAYERS`) match what `pong-serialize` emits. The `applyDeltaFn` maps them to the internal lowercase field names used by the simulation.
 
 #### 6. `pongSync(localState, serverState, myPlayerId) -> void`
 
@@ -374,21 +385,23 @@ If any of these differ by even one integer, the client and server will desync an
 
 ## Step 6: The Client Loop
 
-Here is the sequence of operations in `gateway/pong/index.js` every tick (~16ms):
+The shared `createGameClient` in `gateway/game-client.js` handles the tick loop, networking, and input buffering for all games. Each game provides a `getInput(world)` callback that returns the game-specific input. Here is the sequence of operations every tick (~16ms):
 
 ### A. Input Phase
 
-1. Read mouse Y position.
-2. Convert screen pixels to fixed-point game coordinates.
-3. Build an input object: `{ ty: <target Y>, t: <nextTick> }`.
-4. Send to the server as an s-expression: `"(:ty 1500 :t 42)"`.
-5. Store in `world.inputBuffer` keyed by tick.
+1. The framework calls your `getInput(world)` callback.
+2. You read input (mouse, keyboard), convert to game coordinates, and return `{ local, wire }`.
+3. The framework adds `TICK` to the wire object and `t` to the local object.
+4. The wire object is sent as JSON: `{"TARGET_Y": 1500, "TICK": 42}`.
+5. The local object is stored in `world.inputBuffer` keyed by tick.
 
 ```javascript
-const ty = fpRound(((mouseY - centerY) / renderScale) * 1000);
-const nextTick = world.currentTick + 1;
-connection.send(`(:ty ${ty} :t ${nextTick})`);
-world.inputBuffer.get(nextTick)[world.myPlayerId] = { ty, t: nextTick };
+// In your getInput callback:
+getInput: (world) => {
+    if (world.localState.status !== 'ACTIVE') return null;
+    const ty = fpRound(((mouseY - centerY) / renderScale) * 1000);
+    return { local: { ty }, wire: { TARGET_Y: ty } };
+}
 ```
 
 ### B. Prediction Phase
@@ -516,41 +529,55 @@ Minimal: a canvas, a script tag, and optionally a stats overlay.
 
 ### B. Client Entry Point (`gateway/pong/index.js`)
 
-The entry point creates a `FoldBackWorld`, sets up input handling, and wires the message handler:
+The entry point uses `createGameClient` from `gateway/game-client.js`, which handles networking (WebSocket/WebRTC), the tick loop, input buffering, prediction, and connection management. The game only provides its specific logic:
 
 ```javascript
-import { FoldBackWorld, processServerMessage } from '../foldback-engine.js';
+import { createGameClient } from '../game-client.js';
+import { fpRound } from '../fixed-point.js';
 import { pongUpdate, pongApplyDelta, pongSync, pongRender } from './logic.js';
 
-const world = new FoldBackWorld("pong");
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let mouseY = 0;
+canvas.addEventListener('mousemove', (e) => { mouseY = e.clientY; });
+
+const { world } = createGameClient({
+    gameName: 'pong',
+    updateFn: pongUpdate,
+    applyDeltaFn: pongApplyDelta,
+    syncFn: pongSync,
+    render: () => pongRender(ctx, canvas, world.localState, 0, world.myPlayerId, world.msPerTick),
+    getInput: () => {
+        if (world.localState.status !== 'ACTIVE') return null;
+        const ty = fpRound(((mouseY - canvas.height / 2) / renderScale) * 1000);
+        return { local: { ty }, wire: { TARGET_Y: ty } };
+    },
+});
+
+// Custom reconciliation: compare paddle + ball positions
 world.reconciliationThresholdSq = 1;
-
-function onMessage(data) {
-    processServerMessage(world, data, pongUpdate, pongApplyDelta, pongSync);
-}
-
-function renderLoop() {
-    pongRender(ctx, canvas, world.localState, 0, world.myPlayerId, world.msPerTick);
-    requestAnimationFrame(renderLoop);
-}
-requestAnimationFrame(renderLoop);
+world.comparisonFn = (predicted, authoritative) => { /* ... */ };
 ```
 
-The input loop reads mouse Y, converts to game coordinates, sends to server, and runs local prediction. Connection setup (WebSocket or WebRTC) is boilerplate -- see `gateway/pong/index.js` for the full version.
+`createGameClient` returns the `world` object. Games can set `comparisonFn` on it for custom reconciliation logic. Optional hooks (`onBeforeMessage`, `onAfterMessage`, `onAfterInput`, `onRender`, `init`) support game-specific needs like death detection or asset loading.
 
 ### C. Networking Protocol
 
-**Client -> Server**: S-expression strings.
-```
-"(:ty 1500 :t 42)"
-"(:ping 1709912345678)"
+**Client -> Server**: JSON objects.
+```json
+{"TARGET_Y": 1500, "TICK": 42}
+{"TYPE": "PING", "ID": 1709912345678}
+{"TYPE": "JOIN"}
+{"TYPE": "LEAVE"}
 ```
 
-**Server -> Client**: JSON strings.
+**Server -> Client**: JSON objects with UPPERCASE keys.
 ```json
-{"your_id": 0, "game_id": "pong"}
-{"t": 42, "s": "active", "bl": {"x": 800, "y": 0, "vx": 80, "vy": 0}, "p": [{"id": 0, "side": 0, "x": -5500, "y": 1500, "sc": 0}]}
+{"YOUR_ID": 0, "GAME_ID": "pong", "TICK_RATE": 60}
+{"TICK": 42, "STATUS": "ACTIVE", "BALL": {"X": 800, "Y": 0, "VX": 80, "VY": 0}, "PLAYERS": [{"ID": 0, "SIDE": 0, "X": -5500, "Y": 1500, "SCORE": 0}]}
 ```
+
+JSON Schemas for each game's wire protocol are in `schemas/<game>/`. These are not required by the engine, but they serve as a shared spec between server and client -- useful when different people (or agents) work on each side, and helpful for reasoning about the message contract.
 
 ### D. ASDF System (`foldback.asd`)
 
@@ -691,18 +718,26 @@ Lisp (src/games/[game].lisp)
  [ ] Implement [game]-join(player-id, state) -> player-map
  [ ] Implement [game]-update(state, inputs) -> new-state
  [ ] Implement [game]-serialize(current-state, last-state) -> json-string
+     Use json-obj with keywords for UPPERCASE keys, serialize-player-list for players
  [ ] Export all functions from the foldback package (src/package.lisp)
 
 JavaScript (gateway/[game]/logic.js)
  [ ] Port all constants (must match Lisp exactly)
  [ ] Port [game]-update identically -> gameUpdate(state, inputs)
  [ ] Implement gameApplyDelta(baseState, delta) -> mergedState
+     Map UPPERCASE wire keys to internal lowercase
  [ ] Implement gameSync(localState, serverState, myPlayerId)
- [ ] Implement gameRender(ctx, canvas, state, tileSize, myPlayerId)
+ [ ] Implement gameRender(ctx, canvas, state, ...)
 
 Wiring (gateway/[game]/)
  [ ] index.html -- canvas + script tag
- [ ] index.js -- FoldBackWorld, input loop, render loop, message handler
+ [ ] index.js -- use createGameClient() from game-client.js
+     Provide: gameName, updateFn, applyDeltaFn, syncFn, render, getInput
+     Optional hooks: onBeforeMessage, onAfterMessage, onAfterInput, onRender, init
+
+Wire Protocol (schemas/[game]/) -- optional but recommended
+ [ ] client-to-server.schema.json -- JOIN, INPUT, PING, LEAVE
+ [ ] server-to-client.schema.json -- WELCOME, PONG, STATE_UPDATE
 
 Build System
  [ ] foldback.asd -- add (:file "[game]") to games module
@@ -710,6 +745,8 @@ Build System
 
 Testing
  [ ] Cross-platform test: same inputs in Lisp and JS, compare final state
+ [ ] Serialization test: verify UPPERCASE keys in Lisp output
+ [ ] ApplyDelta test: verify UPPERCASE -> lowercase mapping in JS
  [ ] Run make check-parens after editing .lisp files
  [ ] Playwright E2E test: two browsers, verify prediction and rollback
 ```
@@ -719,7 +756,7 @@ Testing
 - **Floating-point creep**: Use `fpMul`/`fpDiv` for any multiplication or division of scaled values. Plain `+` and `-` are fine.
 - **Rounding differences**: Lisp `(round 2.5)` is `2` (banker's rounding). JS `Math.round(2.5)` is `3`. Use `floor` consistently or use the fixed-point helpers which avoid this.
 - **Map iteration order**: Do not rely on the order of keys in a JS object or `fset:map`. Sort player IDs first if order matters.
-- **The "input for tick T" rule**: If you apply input locally at tick 100, you must send `:t 100` to the server. FoldBack handles late arrivals by rewinding, but the tick tag must be correct.
+- **The "input for tick T" rule**: If you apply input locally at tick 100, you must send `"TICK": 100` to the server. The `createGameClient` framework handles this automatically — your `getInput` callback just returns the game-specific fields. FoldBack handles late arrivals by rewinding, but the tick tag must be correct.
 - **Mutation in simulation**: Never mutate the input state. Use spread (`{ ...obj }`) in JS and `fset:with` in Lisp to create new objects.
 - **Package exports**: New Lisp functions must be exported from the `foldback` package in `src/package.lisp`, or the Makefile target cannot reference them.
 - **Paren balance**: Run `make check-parens` after editing `.lisp` files to catch mismatches before loading into SBCL.

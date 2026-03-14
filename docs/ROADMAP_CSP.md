@@ -8,8 +8,8 @@
 
 ## Per-Player Acks
 **Goal**: Robustness against extreme packet loss.
-- Currently the client uses the global server tick `t` to prune its `inputBuffer`.
-- Server should track the highest tick processed per `playerId` and echo it back in the delta: `{"t": 500, "ack": 495}`.
+- Currently the client uses the global server tick `TICK` to prune its `inputBuffer`.
+- Server should track the highest tick processed per `playerId` and echo it back in the delta: `{"TICK": 500, "ACK": 495}`.
 - Client uses `ack` to prune, ensuring no inputs are dropped before the server has definitely seen them.
 
 ## Configurable Tick Rate

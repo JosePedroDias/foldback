@@ -28,8 +28,8 @@ The most common issue in CLI-driven Lisp development is the execution of old cod
 
 ## 4. UDP & WebRTC Gateway Debugging
 *   **Blocking Sockets:** `usocket:socket-receive` is blocking by default. In a game loop, always use `(usocket:wait-for-input socket :timeout 0)` to ensure the simulation continues ticking even if no packets arrive.
-*   **JSON Serialization:** 
-    *   Manual JSON string building is fragile. Use a list of "parts" and join them with commas: `(format nil "{~{~A~^,~}}" parts)`.
+*   **JSON Serialization:**
+    *   Use `json-obj` with keyword keys for UPPERCASE output (`:tick` → `"TICK"`), `serialize-player-list` for player arrays, and `to-json` for encoding. Avoid manual string building.
     *   **WebRTC Text vs Binary:** The Go gateway must use `DataChannel.SendText()` for JSON. Sending as binary (the default for `Send()`) causes `JSON.parse` errors in the browser.
 *   **ICE Gathering:** Without a STUN/TURN server or trickle ICE, you **must** wait for `iceGatheringState === 'complete'` on both the client and server before exchanging SDP offers/answers.
 

@@ -21,12 +21,13 @@ The gateway is a dumb proxy — it does not run game logic. It bridges browser p
 - `gateway/` — Go proxy + JS client code
   - `gateway/main.go` — Go WebSocket/WebRTC → UDP proxy
   - `gateway/foldback-engine.js` — Client-side prediction engine (shared by all games)
+  - `gateway/game-client.js` — Shared game client bootstrap (`createGameClient`)
   - `gateway/fixed-point.js` — JS fixed-point math (must match Lisp exactly)
   - `gateway/physics.js` — JS physics (must match Lisp exactly)
-  - `gateway/<game>/index.js` — Per-game client entry point
+  - `gateway/<game>/index.js` — Per-game client entry point (uses `createGameClient`)
   - `gateway/<game>/logic.js` — Per-game JS simulation (must match Lisp)
 - `tests/` — All tests (cross-platform unit, Lisp integration, Playwright E2E)
-- `schemas/<game>/` — JSON Schema definitions for each game's wire protocol
+- `schemas/<game>/` — JSON Schema definitions for each game's wire protocol (optional, not used by the engine — serves as a shared spec between server and client, and helps agents reason about games)
   - `client-to-server.schema.json` — Messages the JS client sends to the Lisp server
   - `server-to-client.schema.json` — Messages the Lisp server sends to the JS client
 - `docs/` — Documentation and GDDs
@@ -84,10 +85,8 @@ All game messages use JSON with UPPERCASE keys and UPPERCASE values for enums. K
 - **Client → Server**: JSON objects (e.g., `{"TARGET_Y": 1500, "TICK": 42}`, `{"TYPE": "PING", "ID": 123}`)
 - **Server → Client**: JSON objects (e.g., `{"TICK": 42, "STATUS": "ACTIVE", "BALL": {...}, "PLAYERS": [...]}`)
 - Schemas are in `schemas/<game>/` — one file per direction per game
-- Helpers in `src/utils.lisp`: `json-obj` accepts keywords and auto-converts (`:target-y` → `"TARGET_Y"`), `from-json` parses JSON into `fset:map` with keyword keys, `parse-client-message` tries JSON first with S-expr fallback for non-migrated games
-- `gateway/foldback-engine.js` reads uppercase keys with `??` fallbacks (e.g., `delta.TICK ?? delta.t`) so non-migrated games keep working
-
-**Migration status**: All four games (pong, airhockey, bomberman, jumpnbump) are fully migrated to JSON.
+- Helpers in `src/utils.lisp`: `json-obj` accepts keywords and auto-converts (`:target-y` → `"TARGET_Y"`), `serialize-player-list` handles player array serialization declaratively, `from-json` parses JSON into `fset:map` with keyword keys
+- `gateway/game-client.js`: `createGameClient(config)` handles networking, tick loop, input buffering, and prediction — games only provide `getInput`, `render`, and optional hooks
 
 ## Common Pitfalls
 

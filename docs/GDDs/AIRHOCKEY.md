@@ -51,7 +51,7 @@ Air Hockey is a 2-player competitive arcade game. Players control circular paddl
 
 ## Controls
 
-**Input format**: `(:tx <target_x> :ty <target_y> :t <tick>)`
+**Input format**: `{"TARGET_X": <target_x>, "TARGET_Y": <target_y>, "TICK": <tick>}`
 
 Paddles use 1:1 positional tracking -- the paddle moves directly to the target position (mouse/touch). The velocity (vx, vy) is derived as the delta from previous position to the new clamped position.
 
