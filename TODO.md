@@ -1,4 +1,4 @@
-- assess what sort of payloads are being received from existing games. i believe they're s expressions. can we move to json instead? as you do so, be sure to uppercase all values and keys so transforming from lisp symbols is more seamless. as you do this change, document the client to server and server to client json schemas for the messages each game supports both ways.
+- we're in the process of fixing pong after some changes. once we consider that game solid, we should revisit the remaining games to apply the same refactors to them
 
 - how easy would it be to have a single game implementation support multiple games sessions instead of a single one? I'm a bit divided whether a single game server should support multple game sessions in parallel. I guess it depends on how may sources a single game server takes
 

@@ -59,6 +59,10 @@
            ;; Utilities
            #:json-obj
            #:to-json
+           #:from-json
+           #:keyword-to-json-key
+           #:json-key-to-keyword
+           #:parse-client-message
            #:fb-next-rand
            #:fb-rand-int
 

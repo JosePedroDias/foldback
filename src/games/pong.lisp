@@ -9,6 +9,7 @@
 (defconstant +pong-ball-speed+ 80)     ; initial ball vx per tick
 (defconstant +pong-max-vy+ 120)        ; max vertical speed after paddle bounce
 (defconstant +pong-max-score+ 11)
+(defconstant +pong-win-reset-ticks+ 600) ; 10 seconds at 60Hz
 
 (defun pong-find-by-side (players side)
   "Return (values pid player) for the player on SIDE, or (values nil nil)."
@@ -54,8 +55,29 @@
          (new-players (fset:map)))
 
     ;; --- Status transitions ---
+
+    ;; Player left during a non-waiting state → full reset
     (when (and (not (eq status :waiting)) (< (fset:size players) 2))
-      (setf status :waiting))
+      (let ((reset-players (fset:map)))
+        (fset:do-map (pid p players)
+          (setf reset-players (fset:with reset-players pid
+                                    (fset:with (fset:with p :sc 0) :y 0))))
+        (return-from pong-update
+          (fset:map (:tick next-tick) (:players reset-players)
+                    (:ball nil) (:status :waiting)))))
+
+    ;; Win state → wait 10 seconds then reset
+    (when (member status '(:p0-wins :p1-wins))
+      (let ((wt (fset:lookup state :win-tick)))
+        (if (and wt (>= (- tick wt) +pong-win-reset-ticks+))
+            (let ((reset-players (fset:map)))
+              (fset:do-map (pid p players)
+                (setf reset-players (fset:with reset-players pid
+                                          (fset:with (fset:with p :sc 0) :y 0))))
+              (return-from pong-update
+                (fset:map (:tick next-tick) (:players reset-players)
+                          (:ball nil) (:status :waiting))))
+            (return-from pong-update (fset:with state :tick next-tick)))))
 
     (when (and (eq status :waiting) (>= (fset:size players) 2))
       (return-from pong-update
@@ -69,7 +91,7 @@
           (max-y (- (/ +pong-table-h+ 2) +pong-paddle-half-h+)))
       (fset:do-map (pid p players)
         (let* ((input (or (and inputs (fset:lookup inputs pid)) (fset:map)))
-               (ty (or (fset:lookup input :ty) (fset:lookup p :y)))
+               (ty (or (fset:lookup input :target-y) (fset:lookup input :ty) (fset:lookup p :y)))
                (ny (fp-clamp ty min-y max-y)))
           (setf new-players (fset:with new-players pid (fset:with p :y ny))))))
 
@@ -138,7 +160,9 @@
             (let ((new-sc (1+ (fset:lookup sp :sc))))
               (setf new-players (fset:with new-players scorer-pid (fset:with sp :sc new-sc)))
               (if (>= new-sc +pong-max-score+)
-                  (setf status :p1-wins)
+                  (return-from pong-update
+                    (fset:map (:tick next-tick) (:players new-players)
+                              (:ball ball) (:status :p1-wins) (:win-tick next-tick)))
                   (return-from pong-update
                     (pong-reset (fset:map (:tick tick) (:players new-players)
                                          (:ball ball) (:status status))
@@ -151,7 +175,9 @@
             (let ((new-sc (1+ (fset:lookup sp :sc))))
               (setf new-players (fset:with new-players scorer-pid (fset:with sp :sc new-sc)))
               (if (>= new-sc +pong-max-score+)
-                  (setf status :p0-wins)
+                  (return-from pong-update
+                    (fset:map (:tick next-tick) (:players new-players)
+                              (:ball ball) (:status :p0-wins) (:win-tick next-tick)))
                   (return-from pong-update
                     (pong-reset (fset:map (:tick tick) (:players new-players)
                                          (:ball ball) (:status status))
@@ -169,17 +195,20 @@
          (ball (fset:lookup state :ball))
          (tick (fset:lookup state :tick))
          (status (or (fset:lookup state :status) :waiting))
-         (obj (json-obj "t" tick "s" (symbol-name status))))
+         (win-tick (fset:lookup state :win-tick))
+         (obj (json-obj :tick tick :status status)))
+    (when win-tick
+      (setf (gethash (keyword-to-json-key :win-tick) obj) win-tick))
     (when ball
-      (setf (gethash "bl" obj)
-            (json-obj "x" (fset:lookup ball :x) "y" (fset:lookup ball :y)
-                      "vx" (fset:lookup ball :vx) "vy" (fset:lookup ball :vy))))
+      (setf (gethash (keyword-to-json-key :ball) obj)
+            (json-obj :x (fset:lookup ball :x) :y (fset:lookup ball :y)
+                      :vx (fset:lookup ball :vx) :vy (fset:lookup ball :vy))))
     (let ((p-list nil))
       (fset:do-map (id p players)
-        (push (json-obj "id" id "side" (fset:lookup p :side)
-                        "x" (fset:lookup p :x) "y" (fset:lookup p :y)
-                        "sc" (fset:lookup p :sc))
+        (push (json-obj :id id :side (fset:lookup p :side)
+                        :x (fset:lookup p :x) :y (fset:lookup p :y)
+                        :score (fset:lookup p :sc))
               p-list))
       (when p-list
-        (setf (gethash "p" obj) (coerce (nreverse p-list) 'vector))))
+        (setf (gethash (keyword-to-json-key :players) obj) (coerce (nreverse p-list) 'vector))))
     (to-json obj)))

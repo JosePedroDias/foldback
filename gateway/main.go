@@ -92,7 +92,7 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 	// Ensure we notify Lisp server on leave
 	defer func() {
 		fmt.Printf("WS Client Left: %s\n", clientID)
-		udpConn.Write([]byte("(:leave t)"))
+		udpConn.Write([]byte(`{"TYPE":"LEAVE"}`))
 		udpConn.Close()
 		conn.Close()
 	}()
@@ -145,14 +145,16 @@ func handleOffer(w http.ResponseWriter, r *http.Request) {
 		udpOnce.Do(func() {
 			if udpConn != nil {
 				fmt.Printf("WebRTC Client Left: %s\n", clientID)
-				udpConn.Write([]byte("(:leave t)"))
+				udpConn.Write([]byte(`{"TYPE":"LEAVE"}`))
 				udpConn.Close()
 			}
+			peerConnection.Close()
 		})
 	}
 
 	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateClosed {
+		fmt.Printf("WebRTC %s state: %s\n", clientID, state.String())
+		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 			cleanupUDP()
 		}
 	})

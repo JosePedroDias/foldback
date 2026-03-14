@@ -73,33 +73,37 @@ export function rollbackAndResimulate(world, targetTick, inputsMap, simulationFn
 export function processServerMessage(world, data, simulationFn, applyDeltaFn, syncFn) {
     const delta = JSON.parse(data);
 
-    // Handle Ping Response
-    if (delta.pong !== undefined) {
-        const sentTime = world.pings.get(delta.pong);
+    // Handle Ping Response (uppercase or legacy lowercase)
+    const pongVal = delta.PONG ?? delta.pong;
+    if (pongVal !== undefined) {
+        const sentTime = world.pings.get(pongVal);
         if (sentTime) {
             world.rtt = Date.now() - sentTime;
             // Lead limit: Half RTT in ticks + 2 buffer
             world.maxLead = Math.ceil((world.rtt / 2) / world.msPerTick) + 2;
-            world.pings.delete(delta.pong);
+            world.pings.delete(pongVal);
         }
         return { type: 'pong' };
     }
 
-    // Handle Welcome Packet
-    if (delta.your_id !== undefined) {
-        if (world.expectedGameId && delta.game_id !== world.expectedGameId) {
-            console.error(`GAME ID MISMATCH! Expected: ${world.expectedGameId}, Got: ${delta.game_id}`);
+    // Handle Welcome Packet (uppercase or legacy lowercase)
+    const yourId = delta.YOUR_ID ?? delta.your_id;
+    if (yourId !== undefined) {
+        const gameId = delta.GAME_ID ?? delta.game_id;
+        if (world.expectedGameId && gameId !== world.expectedGameId) {
+            console.error(`GAME ID MISMATCH! Expected: ${world.expectedGameId}, Got: ${gameId}`);
             return { type: 'abort', reason: 'id_mismatch' };
         }
-        world.myPlayerId = delta.your_id;
-        if (delta.tick_rate) {
-            world.tickRate = delta.tick_rate;
-            world.msPerTick = 1000 / delta.tick_rate;
+        world.myPlayerId = yourId;
+        const tickRate = delta.TICK_RATE ?? delta.tick_rate;
+        if (tickRate) {
+            world.tickRate = tickRate;
+            world.msPerTick = 1000 / tickRate;
         }
-        return { type: 'welcome', id: delta.your_id };
+        return { type: 'welcome', id: yourId };
     }
 
-    const serverTick = delta.t;
+    const serverTick = delta.TICK ?? delta.t;
     if (serverTick === undefined) return { type: 'error' };
 
     // 1. Apply delta to authoritativeState
@@ -111,12 +115,18 @@ export function processServerMessage(world, data, simulationFn, applyDeltaFn, sy
         const myPredicted = predictedState.players[world.myPlayerId];
         const myAuthoritative = world.authoritativeState.players[world.myPlayerId];
 
-        if (myPredicted && myAuthoritative) {
-            let mispredicted = false;
-            
-            if (world.comparisonFn) {
+        // Detect structural changes (player count, status) that position check would miss
+        const predictedPlayerCount = Object.keys(predictedState.players).length;
+        const authoritativePlayerCount = Object.keys(world.authoritativeState.players).length;
+        const structuralChange = predictedPlayerCount !== authoritativePlayerCount
+            || predictedState.status !== world.authoritativeState.status;
+
+        if (structuralChange || (myPredicted && myAuthoritative)) {
+            let mispredicted = structuralChange;
+
+            if (!mispredicted && world.comparisonFn) {
                 mispredicted = !world.comparisonFn(predictedState, world.authoritativeState);
-            } else {
+            } else if (!mispredicted) {
                 const dx = myPredicted.x - myAuthoritative.x;
                 const dy = myPredicted.y - myAuthoritative.y;
                 const distSq = dx * dx + dy * dy;
@@ -124,7 +134,7 @@ export function processServerMessage(world, data, simulationFn, applyDeltaFn, sy
             }
             
             if (mispredicted) {
-                if (window.foldback_test_state) {
+                if (typeof window !== 'undefined' && window.foldback_test_state) {
                     window.foldback_test_state.lastRollback = {
                         tick: serverTick,
                         predicted: myPredicted,

@@ -1,4 +1,4 @@
-.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-fixed-point test-unit test-respawn test-bomb-mechanics test-stress benchmark check-lisp check-parens alive-lsp
+.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-fixed-point test-unit test-respawn test-bomb-mechanics test-stress benchmark check-lisp check-parens alive-lsp kill-servers kill-game kill-gateway
 
 all: lisp-bomberman gateway
 
@@ -44,7 +44,7 @@ lisp-pong:
 		 --eval "(ql:quickload :foldback)" \
 		 --eval "(foldback:start-server :game-id \"pong\" :simulation-fn #'foldback:pong-update :serialization-fn #'foldback:pong-serialize :join-fn #'foldback:pong-join)"
 
-test: test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross
+test: test-lisp test-gateway test-engine test-server-flow test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross
 
 test-lisp:
 	sbcl --non-interactive \
@@ -57,6 +57,17 @@ test-lisp:
 
 test-gateway:
 	cd gateway && go test -v ./...
+
+test-engine:
+	@echo "--- Running Engine Reconciliation Tests (JS) ---"
+	node tests/engine-test.js
+
+test-server-flow:
+	@echo "--- Running Server Flow Tests (Lisp) ---"
+	sbcl --non-interactive \
+		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
+		 --eval "(ql:quickload :foldback)" \
+		 --load tests/server-flow-test.lisp
 
 test-bomberman-cross:
 	@echo "--- Running Bomberman Cross-Platform Tests ---"
@@ -143,6 +154,14 @@ test-e2e:
 	bash tests/run-e2e.sh
 
 test-all: test-lisp test-gateway test-fixed-point test-unit test-respawn test-bomb-mechanics test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-stress test-e2e
+
+kill-game:
+	-pkill -f "sbcl.*foldback"
+
+kill-gateway:
+	-lsof -ti :8080 | xargs -r kill
+
+kill-servers: kill-game kill-gateway
 
 benchmark:
 	sbcl --non-interactive \

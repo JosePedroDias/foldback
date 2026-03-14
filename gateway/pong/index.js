@@ -41,9 +41,16 @@ function onMessage(data) {
     }
 
     if (res.tick !== undefined) {
+        const authPlayers = Object.keys(world.authoritativeState.players).length;
+        const localPlayers = Object.keys(world.localState.players).length;
+        if (authPlayers !== localPlayers) {
+            console.warn(`[tick ${res.tick}] Player count mismatch! auth=${authPlayers} local=${localPlayers}`,
+                { auth: JSON.parse(JSON.stringify(world.authoritativeState.players)),
+                  local: JSON.parse(JSON.stringify(world.localState.players)) });
+        }
         const ahead = world.currentTick - res.tick;
         document.getElementById('netStats').innerText =
-            `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}) | Status: ${world.localState.status} | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks}`;
+            `[${protocol.toUpperCase()}] ID: ${world.myPlayerId} | Tick: ${res.tick} (+${ahead}) | Status: ${world.localState.status} | Players: ${localPlayers} (auth:${authPlayers}) | RTT: ${world.rtt}ms | Rollbacks: ${world.totalRollbacks}`;
     }
 }
 
@@ -59,7 +66,7 @@ function sendInput() {
         const serverTick = world.authoritativeState.tick;
         const lead = world.currentTick - serverTick;
 
-        if (lead < world.maxLead) {
+        if (lead < world.maxLead && world.localState.status === 'ACTIVE') {
             const centerY = canvas.height / 2;
             const margin = 1.15;
             const unitsH = (8000 / 1000) * margin;
@@ -69,7 +76,7 @@ function sendInput() {
             const nextTick = world.currentTick + 1;
             const input = { ty, t: nextTick };
 
-            connection.send(`(:ty ${ty} :t ${nextTick})`);
+            connection.send(JSON.stringify({ TARGET_Y: ty, TICK: nextTick }));
 
             window.foldback_test_state.lastInputSent = { input, tick: nextTick };
 
@@ -88,7 +95,7 @@ function sendInput() {
         if (now - world.lastPingTime > 500) {
             const pingId = now;
             world.pings.set(pingId, now);
-            connection.send(`(:ping ${pingId})`);
+            connection.send(JSON.stringify({ TYPE: "PING", ID: pingId }));
             world.lastPingTime = now;
         }
     }
@@ -97,13 +104,20 @@ function sendInput() {
 
 canvas.addEventListener('mousemove', (e) => { mouseY = e.clientY; });
 
+// Notify server immediately on tab close/navigation
+window.addEventListener('beforeunload', () => {
+    if (connection.isOpen()) {
+        connection.send(JSON.stringify({ TYPE: "LEAVE" }));
+    }
+});
+
 function onOpen() {
     console.log(`${protocol} Open!`);
     document.getElementById('netStats').innerText = "Connected! Waiting for ID...";
-    connection.send("()");
+    connection.send(JSON.stringify({ TYPE: "JOIN" }));
     const joinRetry = setInterval(() => {
         if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }
-        if (connection.isOpen()) connection.send("()");
+        if (connection.isOpen()) connection.send(JSON.stringify({ TYPE: "JOIN" }));
     }, 1000);
     sendInput();
 }

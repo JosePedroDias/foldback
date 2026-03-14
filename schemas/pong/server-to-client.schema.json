@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pong Server-to-Client Messages",
+  "oneOf": [
+    { "$ref": "#/$defs/WELCOME" },
+    { "$ref": "#/$defs/PONG" },
+    { "$ref": "#/$defs/STATE_UPDATE" }
+  ],
+  "$defs": {
+    "WELCOME": {
+      "type": "object",
+      "description": "Sent once after a successful JOIN. Assigns the player their ID.",
+      "properties": {
+        "YOUR_ID": { "type": "integer", "description": "Assigned player ID (0 or 1)" },
+        "GAME_ID": { "const": "pong" },
+        "TICK_RATE": { "type": "integer", "description": "Server tick rate in Hz" }
+      },
+      "required": ["YOUR_ID", "GAME_ID", "TICK_RATE"],
+      "additionalProperties": false
+    },
+    "PONG": {
+      "type": "object",
+      "description": "Echoes the ping ID back so the client can compute RTT.",
+      "properties": {
+        "PONG": { "type": "integer", "description": "The ID from the client's PING message" }
+      },
+      "required": ["PONG"],
+      "additionalProperties": false
+    },
+    "STATE_UPDATE": {
+      "type": "object",
+      "description": "Full game state snapshot, sent every tick.",
+      "properties": {
+        "TICK": { "type": "integer", "description": "Current server tick" },
+        "STATUS": {
+          "type": "string",
+          "enum": ["WAITING", "ACTIVE", "P0_WINS", "P1_WINS"]
+        },
+        "BALL": { "$ref": "#/$defs/BALL" },
+        "PLAYERS": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PLAYER" }
+        },
+        "WIN_TICK": { "type": "integer", "description": "Tick when the win occurred. Present only in P0_WINS/P1_WINS status. Game resets 600 ticks (10s) after this." }
+      },
+      "required": ["TICK", "STATUS"],
+      "additionalProperties": false
+    },
+    "BALL": {
+      "type": "object",
+      "description": "Ball state. All values fixed-point scale 1000.",
+      "properties": {
+        "X":  { "type": "integer", "description": "Ball X position" },
+        "Y":  { "type": "integer", "description": "Ball Y position" },
+        "VX": { "type": "integer", "description": "Ball X velocity per tick" },
+        "VY": { "type": "integer", "description": "Ball Y velocity per tick" }
+      },
+      "required": ["X", "Y", "VX", "VY"],
+      "additionalProperties": false
+    },
+    "PLAYER": {
+      "type": "object",
+      "description": "Player state.",
+      "properties": {
+        "ID":    { "type": "integer", "description": "Player ID (0 or 1)" },
+        "SIDE":  { "type": "integer", "enum": [0, 1], "description": "0 = left, 1 = right" },
+        "X":     { "type": "integer", "description": "Paddle X position (fixed, +/-5500)" },
+        "Y":     { "type": "integer", "description": "Paddle Y position (FP 1000)" },
+        "SCORE": { "type": "integer", "description": "Current score (0 to 11)" }
+      },
+      "required": ["ID", "SIDE", "X", "Y", "SCORE"],
+      "additionalProperties": false
+    }
+  }
+}

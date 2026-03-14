@@ -26,6 +26,9 @@ The gateway is a dumb proxy — it does not run game logic. It bridges browser p
   - `gateway/<game>/index.js` — Per-game client entry point
   - `gateway/<game>/logic.js` — Per-game JS simulation (must match Lisp)
 - `tests/` — All tests (cross-platform unit, Lisp integration, Playwright E2E)
+- `schemas/<game>/` — JSON Schema definitions for each game's wire protocol
+  - `client-to-server.schema.json` — Messages the JS client sends to the Lisp server
+  - `server-to-client.schema.json` — Messages the Lisp server sends to the JS client
 - `docs/` — Documentation and GDDs
 
 ## Per-Game Contract
@@ -74,11 +77,23 @@ All game math uses integers scaled by 1000 (e.g., 1.5 = 1500). No floats in simu
 
 - `make check-parens` — checks all Lisp files for unbalanced parentheses. Run this after editing `.lisp` files to catch paren mismatches before loading into SBCL. Reports the last line where depth increased to help locate the problem.
 
+## Wire Protocol
+
+All game messages use JSON with UPPERCASE keys and UPPERCASE values for enums. Keyword-style values use underscores (e.g., `P0_WINS` not `P0-WINS`). This maps trivially to/from Lisp keywords (`:p0-wins` ↔ `"P0_WINS"`).
+
+- **Client → Server**: JSON objects (e.g., `{"TARGET_Y": 1500, "TICK": 42}`, `{"TYPE": "PING", "ID": 123}`)
+- **Server → Client**: JSON objects (e.g., `{"TICK": 42, "STATUS": "ACTIVE", "BALL": {...}, "PLAYERS": [...]}`)
+- Schemas are in `schemas/<game>/` — one file per direction per game
+- Helpers in `src/utils.lisp`: `json-obj` accepts keywords and auto-converts (`:target-y` → `"TARGET_Y"`), `from-json` parses JSON into `fset:map` with keyword keys, `parse-client-message` tries JSON first with S-expr fallback for non-migrated games
+- `gateway/foldback-engine.js` reads uppercase keys with `??` fallbacks (e.g., `delta.TICK ?? delta.t`) so non-migrated games keep working
+
+**Migration status**: Pong is fully migrated to JSON. Other games (airhockey, bomberman, jumpnbump) still use S-expressions for client→server and lowercase keys for server→client — migrate one game at a time.
+
 ## Common Pitfalls
 
 - The Go gateway serves static files from `gateway/` directory (not project root)
 - Lisp package exports are in `src/package.lisp` — new public symbols must be added there
 - `fset:map` in Lisp uses persistent/immutable maps — mutations return new maps
-- Air Hockey status strings are lowercase in logic (`'active'`, `'p1-wins'`) but may display uppercase in UI
 - When starting servers for testing, wait ~4s for Lisp to load before starting gateway
 - The gateway creates one UDP connection per browser client to the Lisp server
+- `make kill-servers` stops both game server and gateway; `make kill-game` / `make kill-gateway` for individual

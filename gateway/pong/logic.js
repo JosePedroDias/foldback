@@ -14,6 +14,7 @@ const PONG_BALL_R = 150;         // ball radius
 const PONG_BALL_SPEED = 80;      // initial ball vx per tick
 const PONG_MAX_VY = 120;         // max vertical speed after paddle bounce
 const PONG_MAX_SCORE = 11;
+const PONG_WIN_RESET_TICKS = 600; // 10 seconds at 60Hz
 
 function findBySide(players, side) {
     for (let pid in players) {
@@ -39,21 +40,40 @@ export function pongUpdate(state, inputs) {
     const nextTick = state.tick + 1;
     let nextPlayers = { ...state.players };
     let nextBall = state.ball ? { ...state.ball } : null;
-    let nextStatus = state.status || 'waiting';
+    let nextStatus = state.status || 'WAITING';
 
     // --- Status transitions ---
-    if (nextStatus !== 'waiting' && Object.keys(nextPlayers).length < 2) {
-        nextStatus = 'waiting';
+
+    // Player left during a non-waiting state → full reset
+    if (nextStatus !== 'WAITING' && Object.keys(nextPlayers).length < 2) {
+        let resetPlayers = {};
+        for (let pid in nextPlayers) {
+            resetPlayers[pid] = { ...nextPlayers[pid], sc: 0, y: 0 };
+        }
+        return { tick: nextTick, players: resetPlayers, ball: null, status: 'WAITING' };
     }
 
-    if (nextStatus === 'waiting' && Object.keys(nextPlayers).length >= 2) {
-        nextStatus = 'active';
-        let resetState = pongReset({ ...state, status: 'active' }, nextTick, 1);
-        resetState.status = 'active';
+    // Win state → wait 10 seconds then reset
+    if (nextStatus === 'P0_WINS' || nextStatus === 'P1_WINS') {
+        const wt = state.winTick;
+        if (wt !== undefined && (state.tick - wt) >= PONG_WIN_RESET_TICKS) {
+            let resetPlayers = {};
+            for (let pid in nextPlayers) {
+                resetPlayers[pid] = { ...nextPlayers[pid], sc: 0, y: 0 };
+            }
+            return { tick: nextTick, players: resetPlayers, ball: null, status: 'WAITING' };
+        }
+        return { ...state, tick: nextTick };
+    }
+
+    if (nextStatus === 'WAITING' && Object.keys(nextPlayers).length >= 2) {
+        nextStatus = 'ACTIVE';
+        let resetState = pongReset({ ...state, status: 'ACTIVE' }, nextTick, 1);
+        resetState.status = 'ACTIVE';
         return resetState;
     }
 
-    if (nextStatus !== 'active') {
+    if (nextStatus !== 'ACTIVE') {
         return { ...state, tick: nextTick };
     }
 
@@ -138,7 +158,7 @@ export function pongUpdate(state, inputs) {
                 const newSc = (nextPlayers[scorerPid].sc || 0) + 1;
                 nextPlayers[scorerPid] = { ...nextPlayers[scorerPid], sc: newSc };
                 if (newSc >= PONG_MAX_SCORE) {
-                    nextStatus = 'p1-wins';
+                    return { ...state, tick: nextTick, players: nextPlayers, ball: nextBall, status: 'P1_WINS', winTick: nextTick };
                 } else {
                     return pongReset({ ...state, players: nextPlayers }, nextTick, -1);
                 }
@@ -152,7 +172,7 @@ export function pongUpdate(state, inputs) {
                 const newSc = (nextPlayers[scorerPid].sc || 0) + 1;
                 nextPlayers[scorerPid] = { ...nextPlayers[scorerPid], sc: newSc };
                 if (newSc >= PONG_MAX_SCORE) {
-                    nextStatus = 'p0-wins';
+                    return { ...state, tick: nextTick, players: nextPlayers, ball: nextBall, status: 'P0_WINS', winTick: nextTick };
                 } else {
                     return pongReset({ ...state, players: nextPlayers }, nextTick, 1);
                 }
@@ -167,12 +187,19 @@ export function pongUpdate(state, inputs) {
 
 export function pongApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
-    newState.tick = delta.t;
-    newState.status = delta.s;
-    if (delta.bl) newState.ball = delta.bl;
-    if (delta.p) {
+    newState.tick = delta.TICK;
+    newState.status = delta.STATUS;
+    newState.winTick = delta.WIN_TICK;
+    if (delta.BALL) {
+        newState.ball = { x: delta.BALL.X, y: delta.BALL.Y, vx: delta.BALL.VX, vy: delta.BALL.VY };
+    } else {
+        newState.ball = null;
+    }
+    if (delta.PLAYERS) {
         const newPlayers = {};
-        delta.p.forEach(dp => { newPlayers[dp.id] = dp; });
+        delta.PLAYERS.forEach(dp => {
+            newPlayers[dp.ID] = { id: dp.ID, side: dp.SIDE, x: dp.X, y: dp.Y, sc: dp.SCORE };
+        });
         newState.players = newPlayers;
     }
     return newState;
