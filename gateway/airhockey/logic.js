@@ -14,6 +14,7 @@ const AH_MAX_SCORE = 11;
 const AH_FRICTION = 990;
 const AH_BOUNCE = 800;
 const AH_CORNER_RADIUS = 1000;
+const AH_WIN_RESET_TICKS = 120; // 2 seconds at 60Hz
 
 function generateTableSegments() {
     const cr = AH_CORNER_RADIUS / 1000;
@@ -82,15 +83,34 @@ export function airhockeyUpdate(state, inputs) {
     let nextTick = state.tick + 1;
     let nextPlayers = { ...state.players };
     let nextPuck = state.puck ? { ...state.puck } : null;
-    let nextStatus = state.status || 'waiting';
+    let nextStatus = state.status || 'WAITING';
 
-    // Reset to waiting if a player left during an active game
-    if (nextStatus !== 'waiting' && Object.keys(nextPlayers).length < 2) {
-        nextStatus = 'waiting';
+    // Player left during a non-waiting state → full reset
+    if (nextStatus !== 'WAITING' && Object.keys(nextPlayers).length < 2) {
+        let resetPlayers = {};
+        for (let pid in nextPlayers) {
+            let ny = (nextPlayers[pid].side === 0) ? -4000 : 4000;
+            resetPlayers[pid] = { ...nextPlayers[pid], sc: 0, x: 0, y: ny };
+        }
+        return { tick: nextTick, players: resetPlayers, puck: null, status: 'WAITING' };
     }
 
-    if (nextStatus === 'waiting' && Object.keys(nextPlayers).length >= 2) {
-        nextStatus = 'active';
+    // Win state → wait 2 seconds then reset
+    if (nextStatus === 'P0_WINS' || nextStatus === 'P1_WINS') {
+        const wt = state.winTick;
+        if (wt !== undefined && (state.tick - wt) >= AH_WIN_RESET_TICKS) {
+            let resetPlayers = {};
+            for (let pid in nextPlayers) {
+                let ny = (nextPlayers[pid].side === 0) ? -4000 : 4000;
+                resetPlayers[pid] = { ...nextPlayers[pid], sc: 0, x: 0, y: ny };
+            }
+            return { tick: nextTick, players: resetPlayers, puck: null, status: 'WAITING' };
+        }
+        return { ...state, tick: nextTick };
+    }
+
+    if (nextStatus === 'WAITING' && Object.keys(nextPlayers).length >= 2) {
+        nextStatus = 'ACTIVE';
         nextPuck = { x: 0, y: 0, vx: 0, vy: 0 };
         for (let id in nextPlayers) {
             let ny = (nextPlayers[id].side === 0) ? -4000 : 4000;
@@ -98,7 +118,7 @@ export function airhockeyUpdate(state, inputs) {
         }
     }
 
-    if (nextStatus !== 'active') return { ...state, tick: nextTick };
+    if (nextStatus !== 'ACTIVE') return { ...state, tick: nextTick };
 
     for (let pid in nextPlayers) {
         let p = nextPlayers[pid];
@@ -169,7 +189,7 @@ export function airhockeyUpdate(state, inputs) {
                     if (scorerPid !== null) {
                         nextPlayers[scorerPid] = { ...nextPlayers[scorerPid], sc: (nextPlayers[scorerPid].sc || 0) + 1 };
                         if (nextPlayers[scorerPid].sc >= AH_MAX_SCORE) {
-                            nextStatus = 'p1-wins';
+                            nextStatus = 'P1_WINS';
                         } else {
                             return airhockeyResetPositions(state, nextPlayers, nextTick);
                         }
@@ -180,7 +200,7 @@ export function airhockeyUpdate(state, inputs) {
                     if (scorerPid !== null) {
                         nextPlayers[scorerPid] = { ...nextPlayers[scorerPid], sc: (nextPlayers[scorerPid].sc || 0) + 1 };
                         if (nextPlayers[scorerPid].sc >= AH_MAX_SCORE) {
-                            nextStatus = 'p0-wins';
+                            nextStatus = 'P0_WINS';
                         } else {
                             return airhockeyResetPositions(state, nextPlayers, nextTick);
                         }
@@ -191,17 +211,28 @@ export function airhockeyUpdate(state, inputs) {
         nextPuck = { x: px, y: py, vx: pvx, vy: pvy };
     }
 
-    return { ...state, tick: nextTick, players: nextPlayers, puck: nextPuck, status: nextStatus };
+    const result = { ...state, tick: nextTick, players: nextPlayers, puck: nextPuck, status: nextStatus };
+    if (nextStatus === 'P0_WINS' || nextStatus === 'P1_WINS') {
+        result.winTick = nextTick;
+    }
+    return result;
 }
 
 export function airhockeyApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
-    newState.tick = delta.t;
-    newState.status = delta.s;
-    if (delta.pk) newState.puck = delta.pk;
-    if (delta.p) {
+    newState.tick = delta.TICK;
+    newState.status = delta.STATUS;
+    newState.winTick = delta.WIN_TICK;
+    if (delta.PUCK) {
+        newState.puck = { x: delta.PUCK.X, y: delta.PUCK.Y, vx: delta.PUCK.VX, vy: delta.PUCK.VY };
+    } else {
+        newState.puck = null;
+    }
+    if (delta.PLAYERS) {
         const newPlayers = {};
-        delta.p.forEach(dp => { newPlayers[dp.id] = dp; });
+        delta.PLAYERS.forEach(dp => {
+            newPlayers[dp.ID] = { id: dp.ID, side: dp.SIDE, x: dp.X, y: dp.Y, vx: dp.VX, vy: dp.VY, sc: dp.SCORE };
+        });
         newState.players = newPlayers;
     }
     return newState;
@@ -214,7 +245,6 @@ export function airhockeySync(localState, serverState, myPlayerId) {
     currentServerState = JSON.parse(JSON.stringify(serverState));
     lastSyncTime = Date.now();
     localState.status = serverState.status;
-    localState.puck = serverState.puck;
     for (let id in serverState.players) {
         if (id != myPlayerId) localState.players[id] = serverState.players[id];
         else if (localState.players[id]) localState.players[id].sc = serverState.players[id].sc;
@@ -277,12 +307,8 @@ export function airhockeyRender(ctx, canvas, localState, TILE_SIZE, myPlayerId, 
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    let puck = localState.puck;
+    const puck = localState.puck;
     if (puck) {
-        if (currentServerState && lastServerState && lastServerState.puck && currentServerState.puck) {
-            const p1 = lastServerState.puck, p2 = currentServerState.puck;
-            puck = { x: p1.x + (p2.x - p1.x) * lerpFactor, y: p1.y + (p2.y - p1.y) * lerpFactor };
-        }
         ctx.fillStyle = "#ecf0f1";
         ctx.beginPath();
         ctx.arc(centerX + (puck.x/1000) * renderScale, centerY + (puck.y/1000) * renderScale, (AH_PUCK_RADIUS/1000) * renderScale, 0, Math.PI * 2);

@@ -10,6 +10,7 @@
 (defconstant +ah-friction+ 990) ; 0.99
 (defconstant +ah-bounce+ 800)   ; 0.8
 (defconstant +ah-corner-radius+ 1000)
+(defconstant +ah-win-reset-ticks+ 120) ; 2 seconds at 60Hz
 
 (defun make-ah-player (id side x y)
   (fset:map (:id id) (:side side) (:x x) (:y y) (:vx 0) (:vy 0) (:score 0)))
@@ -103,10 +104,30 @@
          (new-players (fset:map))
          (new-puck puck))
 
-    ;; Reset to waiting if a player left during an active game
+    ;; Player left during a non-waiting state → full reset
     (when (and (not (eq status :waiting)) (< (fset:size players) 2))
-      (setf status :waiting)
-      (setf state (fset:with state :status :waiting)))
+      (let ((reset-players (fset:map)))
+        (fset:do-map (pid p players)
+          (let ((ny (if (= (fset:lookup p :side) 0) -4000 4000)))
+            (setf reset-players (fset:with reset-players pid
+                                      (fset:with (fset:with (fset:with p :score 0) :x 0) :y ny)))))
+        (return-from airhockey-update
+          (fset:map (:tick (1+ tick)) (:players reset-players)
+                    (:puck nil) (:status :waiting)))))
+
+    ;; Win state → wait 2 seconds then reset
+    (when (member status '(:p0-wins :p1-wins))
+      (let ((wt (fset:lookup state :win-tick)))
+        (if (and wt (>= (- tick wt) +ah-win-reset-ticks+))
+            (let ((reset-players (fset:map)))
+              (fset:do-map (pid p players)
+                (let ((ny (if (= (fset:lookup p :side) 0) -4000 4000)))
+                  (setf reset-players (fset:with reset-players pid
+                                            (fset:with (fset:with (fset:with p :score 0) :x 0) :y ny)))))
+              (return-from airhockey-update
+                (fset:map (:tick (1+ tick)) (:players reset-players)
+                          (:puck nil) (:status :waiting))))
+            (return-from airhockey-update (fset:with state :tick (1+ tick))))))
 
     (when (and (eq status :waiting) (>= (fset:size players) 2))
       (setf status :active)
@@ -121,8 +142,8 @@
     ;; 2. Update Players (Paddle Movement)
     (fset:do-map (pid p players)
       (let* ((input (or (and inputs (fset:lookup inputs pid)) (fset:map)))
-             (target-x (or (fset:lookup input :tx) (fset:lookup p :x)))
-             (target-y (or (fset:lookup input :ty) (fset:lookup p :y)))
+             (target-x (or (fset:lookup input :target-x) (fset:lookup input :tx) (fset:lookup p :x)))
+             (target-y (or (fset:lookup input :target-y) (fset:lookup input :ty) (fset:lookup p :y)))
              (half-w (/ +ah-table-width+ 2))
              (half-h (/ +ah-table-height+ 2))
              (min-x (+ (- half-w) +ah-paddle-radius+))
@@ -213,6 +234,8 @@
       (setf final-state (fset:with final-state :players new-players))
       (setf final-state (fset:with final-state :status status))
       (setf final-state (fset:with final-state :puck new-puck))
+      (when (member status '(:p0-wins :p1-wins))
+        (setf final-state (fset:with final-state :win-tick (1+ tick))))
       final-state)))
 
 (defun airhockey-serialize (state last-state)
@@ -221,18 +244,21 @@
          (puck (fset:lookup state :puck))
          (tick (fset:lookup state :tick))
          (status (or (fset:lookup state :status) :waiting))
-         (obj (json-obj "t" tick "s" (symbol-name status))))
+         (win-tick (fset:lookup state :win-tick))
+         (obj (json-obj :tick tick :status status)))
+    (when win-tick
+      (setf (gethash (keyword-to-json-key :win-tick) obj) win-tick))
     (when puck
-      (setf (gethash "pk" obj)
-            (json-obj "x" (fset:lookup puck :x) "y" (fset:lookup puck :y)
-                      "vx" (fset:lookup puck :vx) "vy" (fset:lookup puck :vy))))
+      (setf (gethash (keyword-to-json-key :puck) obj)
+            (json-obj :x (fset:lookup puck :x) :y (fset:lookup puck :y)
+                      :vx (fset:lookup puck :vx) :vy (fset:lookup puck :vy))))
     (let ((p-list nil))
       (fset:do-map (id p players)
-        (push (json-obj "id" id "side" (fset:lookup p :side)
-                        "x" (fset:lookup p :x) "y" (fset:lookup p :y)
-                        "vx" (fset:lookup p :vx) "vy" (fset:lookup p :vy)
-                        "sc" (fset:lookup p :score))
+        (push (json-obj :id id :side (fset:lookup p :side)
+                        :x (fset:lookup p :x) :y (fset:lookup p :y)
+                        :vx (fset:lookup p :vx) :vy (fset:lookup p :vy)
+                        :score (fset:lookup p :score))
               p-list))
       (when p-list
-        (setf (gethash "p" obj) (coerce (nreverse p-list) 'vector))))
+        (setf (gethash (keyword-to-json-key :players) obj) (coerce (nreverse p-list) 'vector))))
     (to-json obj)))

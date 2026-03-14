@@ -153,7 +153,57 @@
       (assert-eq (fset:lookup s9b :status) :active "Active with 2 players")
       (assert-true puck9 "Puck created when game activates")
       (assert-eq (fset:lookup puck9 :x) 0 "Puck starts at center x")
-      (assert-eq (fset:lookup puck9 :y) 0 "Puck starts at center y")))
+      (assert-eq (fset:lookup puck9 :y) 0 "Puck starts at center y"))
+
+    ;; Test 10: Serialization produces UPPERCASE JSON
+    (let* ((s-ser (fset:map (:tick 50)
+                            (:players (fset:map
+                                       (0 (fset:map (:id 0) (:side 0) (:x 500) (:y -4000)
+                                                    (:vx 10) (:vy 20) (:score 3)))
+                                       (1 (fset:map (:id 1) (:side 1) (:x -200) (:y 4500)
+                                                    (:vx -5) (:vy 15) (:score 5)))))
+                            (:puck (fset:map (:x 1000) (:y -500) (:vx 200) (:vy 100)))
+                            (:status :active)))
+           (json-str (airhockey-serialize s-ser nil))
+           (parsed (yason:parse json-str)))
+      (format t "  serialize 2P: ~A~%" json-str)
+      (assert-eq (gethash "TICK" parsed) 50 "Serialize: TICK=50")
+      (assert-eq (gethash "STATUS" parsed) "ACTIVE" "Serialize: STATUS=ACTIVE")
+      (let ((puck (gethash "PUCK" parsed)))
+        (assert-true puck "Serialize: PUCK present")
+        (assert-eq (gethash "X" puck) 1000 "Serialize: PUCK.X=1000")
+        (assert-eq (gethash "VY" puck) 100 "Serialize: PUCK.VY=100"))
+      (let ((players (gethash "PLAYERS" parsed)))
+        (assert-eq (length players) 2 "Serialize: 2 players in list")
+        (let ((p0 (find 0 players :key (lambda (p) (gethash "ID" p)))))
+          (assert-true p0 "Serialize: player 0 found")
+          (assert-eq (gethash "SIDE" p0) 0 "Serialize: p0 SIDE=0")
+          (assert-eq (gethash "X" p0) 500 "Serialize: p0 X=500")
+          (assert-eq (gethash "VX" p0) 10 "Serialize: p0 VX=10")
+          (assert-eq (gethash "SCORE" p0) 3 "Serialize: p0 SCORE=3"))))
+
+    ;; Test 11: Serialization with WAITING status
+    (let* ((s-wait (fset:map (:tick 10)
+                             (:players (fset:map (0 p0)))
+                             (:puck nil)
+                             (:status :waiting)))
+           (json-str (airhockey-serialize s-wait nil))
+           (parsed (yason:parse json-str)))
+      (format t "  serialize 1P: ~A~%" json-str)
+      (assert-eq (gethash "STATUS" parsed) "WAITING" "Serialize 1P: STATUS=WAITING")
+      (assert-eq (gethash "PUCK" parsed nil) nil "Serialize 1P: no PUCK"))
+
+    ;; Test 12: Serialization with win status
+    (let* ((s-win (fset:map (:tick 100)
+                            (:players (fset:map
+                                       (0 (fset:with p0 :score 11))
+                                       (1 p1)))
+                            (:puck (make-ah-puck 0 0))
+                            (:status :p0-wins)))
+           (json-str (airhockey-serialize s-win nil))
+           (parsed (yason:parse json-str)))
+      (format t "  serialize win: ~A~%" json-str)
+      (assert-eq (gethash "STATUS" parsed) "P0_WINS" "Serialize win: STATUS=P0_WINS")))
 
   (format t "~%All Lisp Air Hockey Cross-Platform Tests Passed!~%"))
 

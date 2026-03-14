@@ -1,4 +1,4 @@
-- we're in the process of fixing pong after some changes. once we consider that game solid, we should revisit the remaining games to apply the same refactors to them
+- migrate bomberman to JSON wire protocol and apply the same engine improvements (ball prediction, tick tracking, Foundation Fix resimulation) that were done for pong and airhockey
 
 - how easy would it be to have a single game implementation support multiple games sessions instead of a single one? I'm a bit divided whether a single game server should support multple game sessions in parallel. I guess it depends on how may sources a single game server takes
 

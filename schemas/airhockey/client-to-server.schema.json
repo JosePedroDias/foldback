@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Air Hockey Client-to-Server Messages",
+  "oneOf": [
+    { "$ref": "#/$defs/JOIN" },
+    { "$ref": "#/$defs/INPUT" },
+    { "$ref": "#/$defs/PING" },
+    { "$ref": "#/$defs/LEAVE" }
+  ],
+  "$defs": {
+    "JOIN": {
+      "type": "object",
+      "description": "Request a player slot when first connecting.",
+      "properties": {
+        "TYPE": { "const": "JOIN" }
+      },
+      "required": ["TYPE"],
+      "additionalProperties": false
+    },
+    "INPUT": {
+      "type": "object",
+      "description": "Per-tick paddle input. TARGET_X and TARGET_Y are the desired paddle position in fixed-point (scale 1000). Paddles are constrained to own half of the table.",
+      "properties": {
+        "TARGET_X": { "type": "integer", "description": "Desired paddle X position (FP 1000)" },
+        "TARGET_Y": { "type": "integer", "description": "Desired paddle Y position (FP 1000)" },
+        "TICK": { "type": "integer", "description": "Target tick for this input" }
+      },
+      "required": ["TARGET_X", "TARGET_Y", "TICK"],
+      "additionalProperties": false
+    },
+    "PING": {
+      "type": "object",
+      "description": "Latency probe. Server echoes the ID back as a PONG.",
+      "properties": {
+        "TYPE": { "const": "PING" },
+        "ID": { "type": "integer", "description": "Timestamp used to compute RTT" }
+      },
+      "required": ["TYPE", "ID"],
+      "additionalProperties": false
+    },
+    "LEAVE": {
+      "type": "object",
+      "description": "Client disconnect. Also sent by the Go gateway on WebSocket/WebRTC close.",
+      "properties": {
+        "TYPE": { "const": "LEAVE" }
+      },
+      "required": ["TYPE"],
+      "additionalProperties": false
+    }
+  }
+}

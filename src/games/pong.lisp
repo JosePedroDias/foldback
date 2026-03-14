@@ -9,7 +9,7 @@
 (defconstant +pong-ball-speed+ 80)     ; initial ball vx per tick
 (defconstant +pong-max-vy+ 120)        ; max vertical speed after paddle bounce
 (defconstant +pong-max-score+ 11)
-(defconstant +pong-win-reset-ticks+ 600) ; 10 seconds at 60Hz
+(defconstant +pong-win-reset-ticks+ 120) ; 2 seconds at 60Hz
 
 (defun pong-find-by-side (players side)
   "Return (values pid player) for the player on SIDE, or (values nil nil)."

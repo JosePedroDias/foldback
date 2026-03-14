@@ -27,7 +27,23 @@ const protocol = urlParams.get('protocol') || 'webrtc';
 
 const world = new FoldBackWorld("airhockey");
 window.world = world;
-world.reconciliationThresholdSq = 1; // Any integer difference in FP triggers rollback
+world.reconciliationThresholdSq = 1;
+world.comparisonFn = (predicted, authoritative) => {
+    const myP = predicted.players[world.myPlayerId];
+    const myA = authoritative.players[world.myPlayerId];
+    if (!myP || !myA) return false;
+    const dx = myP.x - myA.x;
+    const dy = myP.y - myA.y;
+    if (dx * dx + dy * dy > world.reconciliationThresholdSq) return false;
+    const pPuck = predicted.puck, aPuck = authoritative.puck;
+    if (!!pPuck !== !!aPuck) return false;
+    if (pPuck && aPuck) {
+        const dpx = pPuck.x - aPuck.x;
+        const dpy = pPuck.y - aPuck.y;
+        if (dpx * dpx + dpy * dpy > world.reconciliationThresholdSq) return false;
+    }
+    return true;
+};
 let connection = { send: (data) => {}, isOpen: () => false };
 let mouseX = 0, mouseY = 0;
 
@@ -64,11 +80,10 @@ function sendInput() {
         const serverTick = world.authoritativeState.tick;
         const lead = world.currentTick - serverTick;
 
-        if (lead < world.maxLead) {
-            // Convert mouse screen coords to table fixed-point coords
+        if (lead < world.maxLead && world.localState.status === 'ACTIVE') {
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            
+
             const margin = 1.1;
             const unitsW = (8000 / 1000) * margin;
             const unitsH = (12000 / 1000) * margin;
@@ -76,21 +91,20 @@ function sendInput() {
 
             const tx = fpRound(((mouseX - centerX) / renderScale) * 1000);
             const ty = fpRound(((mouseY - centerY) / renderScale) * 1000);
-            
+
             const nextTick = world.currentTick + 1;
             const input = { tx, ty, t: nextTick };
-            
-            connection.send(`(:tx ${tx} :ty ${ty} :t ${nextTick})`);
-            
-            // Update test state
+
+            connection.send(JSON.stringify({ TARGET_X: tx, TARGET_Y: ty, TICK: nextTick }));
+
             window.foldback_test_state.lastInputSent = { input, tick: nextTick };
 
             if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
             world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
-            
+
             const inputsForTick = {};
             inputsForTick[world.myPlayerId] = input;
-            
+
             world.localState = airhockeyUpdate(world.localState, inputsForTick);
             world.currentTick = nextTick;
             world.history.set(nextTick, JSON.parse(JSON.stringify(world.localState)));
@@ -100,7 +114,7 @@ function sendInput() {
         if (now - world.lastPingTime > 500) {
             const pingId = now;
             world.pings.set(pingId, now);
-            connection.send(`(:ping ${pingId})`);
+            connection.send(JSON.stringify({ TYPE: "PING", ID: pingId }));
             world.lastPingTime = now;
         }
     }
@@ -112,14 +126,20 @@ canvas.addEventListener('mousemove', (e) => {
     mouseY = e.clientY;
 });
 
+// Notify server immediately on tab close/navigation
+window.addEventListener('beforeunload', () => {
+    if (connection.isOpen()) {
+        connection.send(JSON.stringify({ TYPE: "LEAVE" }));
+    }
+});
+
 function onOpen() {
     console.log(`${protocol} Open!`);
     document.getElementById('netStats').innerText = "Connected! Waiting for ID...";
-    connection.send("()");
-    // Retry join until we get an ID (server may reject if game is temporarily full)
+    connection.send(JSON.stringify({ TYPE: "JOIN" }));
     const joinRetry = setInterval(() => {
         if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }
-        if (connection.isOpen()) connection.send("()");
+        if (connection.isOpen()) connection.send(JSON.stringify({ TYPE: "JOIN" }));
     }, 1000);
     sendInput();
 }

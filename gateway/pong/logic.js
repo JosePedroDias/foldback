@@ -14,7 +14,7 @@ const PONG_BALL_R = 150;         // ball radius
 const PONG_BALL_SPEED = 80;      // initial ball vx per tick
 const PONG_MAX_VY = 120;         // max vertical speed after paddle bounce
 const PONG_MAX_SCORE = 11;
-const PONG_WIN_RESET_TICKS = 600; // 10 seconds at 60Hz
+const PONG_WIN_RESET_TICKS = 120; // 2 seconds at 60Hz
 
 function findBySide(players, side) {
     for (let pid in players) {
