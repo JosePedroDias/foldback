@@ -1,5 +1,3 @@
-- migrate bomberman to JSON wire protocol and apply the same engine improvements (ball prediction, tick tracking, Foundation Fix resimulation) that were done for pong and airhockey
-
 - how easy would it be to have a single game implementation support multiple games sessions instead of a single one? I'm a bit divided whether a single game server should support multple game sessions in parallel. I guess it depends on how may sources a single game server takes
 
 - let's devise an additional lisp component sitting alongside the game servers which will handle persistence of user related state and authentication. it should support queries of where is player x (which game, which session). is should support game servers setting those values. it should support game servers reading user-related info and saving changes atomically (ie, multiple concurrent changes shouldn't break it). user related things should default to memory but be lazily persisted to disk in case of the component failing to be able to resume

@@ -62,8 +62,8 @@ function sendInput() {
             
             const nextTick = world.currentTick + 1;
             const input = { dx, dy, 'drop-bomb': bomb, t: nextTick };
-            
-            connection.send(`(:dx ${dx} :dy ${dy} :drop-bomb ${bomb ? "t" : "nil"} :t ${nextTick})`);
+
+            connection.send(JSON.stringify({ DX: dx, DY: dy, DROP_BOMB: bomb, TICK: nextTick }));
             
             if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
             world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
@@ -80,19 +80,26 @@ function sendInput() {
         if (now - world.lastPingTime > 500) {
             const pingId = now;
             world.pings.set(pingId, now);
-            connection.send(`(:ping ${pingId})`);
+            connection.send(JSON.stringify({ TYPE: "PING", ID: pingId }));
             world.lastPingTime = now;
         }
     }
     setTimeout(sendInput, world.msPerTick);
 }
 
+// Notify server immediately on tab close/navigation
+window.addEventListener('beforeunload', () => {
+    if (connection.isOpen()) {
+        connection.send(JSON.stringify({ TYPE: "LEAVE" }));
+    }
+});
+
 function onOpen() {
     console.log(`${protocol} Open!`);
-    connection.send("()");
+    connection.send(JSON.stringify({ TYPE: "JOIN" }));
     const joinRetry = setInterval(() => {
         if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }
-        if (connection.isOpen()) connection.send("()");
+        if (connection.isOpen()) connection.send(JSON.stringify({ TYPE: "JOIN" }));
     }, 1000);
     sendInput();
 }

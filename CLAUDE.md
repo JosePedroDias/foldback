@@ -87,7 +87,7 @@ All game messages use JSON with UPPERCASE keys and UPPERCASE values for enums. K
 - Helpers in `src/utils.lisp`: `json-obj` accepts keywords and auto-converts (`:target-y` → `"TARGET_Y"`), `from-json` parses JSON into `fset:map` with keyword keys, `parse-client-message` tries JSON first with S-expr fallback for non-migrated games
 - `gateway/foldback-engine.js` reads uppercase keys with `??` fallbacks (e.g., `delta.TICK ?? delta.t`) so non-migrated games keep working
 
-**Migration status**: Pong is fully migrated to JSON. Other games (airhockey, bomberman, jumpnbump) still use S-expressions for client→server and lowercase keys for server→client — migrate one game at a time.
+**Migration status**: Pong, airhockey, and bomberman are fully migrated to JSON. Jumpnbump still uses S-expressions for client→server and lowercase keys for server→client.
 
 ## Common Pitfalls
 

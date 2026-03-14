@@ -1,4 +1,4 @@
-.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-fixed-point test-unit test-respawn test-bomb-mechanics test-stress benchmark check-lisp check-parens alive-lsp kill-servers kill-game kill-gateway
+.PHONY: all lisp-bomberman lisp-airhockey lisp-jumpnbump lisp-pong gateway test test-all test-e2e clean setup test-lisp test-gateway test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-fixed-point test-bomberman-unit test-bomberman-respawn test-bomberman-stress benchmark check-lisp check-parens alive-lsp kill-servers kill-game kill-gateway
 
 all: lisp-bomberman gateway
 
@@ -50,9 +50,8 @@ test-lisp:
 	sbcl --non-interactive \
 		 --load foldback.asd \
 		 --eval "(ql:quickload :foldback)" \
-		 --load tests/tests.lisp \
+		 --load tests/bomberman-rollback-test.lisp \
 		 --load tests/physics-test.lisp \
-		 --load tests/late-input-test.lisp \
 		 --eval "(uiop:quit)"
 
 test-gateway:
@@ -121,39 +120,32 @@ test-fixed-point:
 		 --eval "(ql:quickload :foldback)" \
 		 --load tests/fixed-point-cross-test.lisp
 
-test-unit:
-	@echo "--- Running Granular Unit Tests (Lisp) ---"
+test-bomberman-unit:
+	@echo "--- Running Bomberman Unit Tests (Lisp) ---"
 	sbcl --non-interactive \
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
-		 --load tests/unit-tests.lisp
+		 --load tests/bomberman-unit-test.lisp
 
-test-respawn:
-	@echo "--- Running Respawn Tests (Lisp) ---"
+test-bomberman-respawn:
+	@echo "--- Running Bomberman Respawn Tests (Lisp) ---"
 	sbcl --non-interactive \
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
-		 --load tests/respawn-test.lisp
+		 --load tests/bomberman-respawn-test.lisp
 
-test-bomb-mechanics:
-	@echo "--- Running Bomb Mechanics Tests (Lisp) ---"
+test-bomberman-stress:
+	@echo "--- Running Bomberman Stress Test ---"
 	sbcl --non-interactive \
 		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
 		 --eval "(ql:quickload :foldback)" \
-		 --load tests/bomb-mechanics-test.lisp
-
-test-stress:
-	@echo "--- Running Stress Test ---"
-	sbcl --non-interactive \
-		 --eval "(asdf:load-asd (truename \"foldback.asd\"))" \
-		 --eval "(ql:quickload :foldback)" \
-		 --load tests/stress-test.lisp
+		 --load tests/bomberman-stress-test.lisp
 
 test-e2e:
 	@echo "--- Running Playwright E2E Tests (all games) ---"
 	bash tests/run-e2e.sh
 
-test-all: test-lisp test-gateway test-fixed-point test-unit test-respawn test-bomb-mechanics test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-stress test-e2e
+test-all: test-lisp test-gateway test-fixed-point test-bomberman-unit test-bomberman-respawn test-bomberman-cross test-airhockey-cross test-airhockey-prediction test-jnb-cross test-pong-cross test-bomberman-stress test-e2e
 
 kill-game:
 	-pkill -f "sbcl.*foldback"

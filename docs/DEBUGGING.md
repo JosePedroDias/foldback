@@ -43,6 +43,6 @@ The most common issue in CLI-driven Lisp development is the execution of old cod
 ### Final Verification Command
 To ensure a clean environment and run all Lisp tests:
 ```bash
-find . -name "*.fasl" -delete && sbcl --non-interactive --load foldback.asd --eval "(ql:quickload :foldback)" --load tests/tests.lisp --load tests/physics-test.lisp --load tests/late-input-test.lisp --eval "(uiop:quit)"
+find . -name "*.fasl" -delete && sbcl --non-interactive --load foldback.asd --eval "(ql:quickload :foldback)" --load tests/bomberman-rollback-test.lisp --load tests/physics-test.lisp --eval "(uiop:quit)"
 ```
 Or simply: `make test-lisp` (and `make test` for the full suite including cross-platform and Go tests).

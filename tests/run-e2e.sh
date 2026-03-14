@@ -85,8 +85,8 @@ start_servers "bomberman" \
 
 run_game_tests "Bomberman" \
     tests/bomberman-multiplayer.spec.ts \
-    tests/prediction.spec.ts \
-    tests/rollback.spec.ts || true
+    tests/bomberman-prediction.spec.ts \
+    tests/bomberman-rollback.spec.ts || true
 
 cleanup
 

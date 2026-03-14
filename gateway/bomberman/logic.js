@@ -261,21 +261,25 @@ export function updateBots(state) {
 
 export function bombermanUpdate(state, inputs) {
     let nextTick = state.tick + 1;
-    
-    // updateBombs now returns updated players too because of explosions
-    let customAfterBombs = updateBombs(state, inputs);
+
+    // 1. Run Player Physics (must match Lisp order: movement → bombs → bots → respawns)
+    let nextPlayers = { ...state.players };
+    for (let pid in nextPlayers) {
+        const input = (inputs && inputs[pid]) || {};
+        nextPlayers[pid] = bombermanMoveAndSlide(pid, nextPlayers[pid], input, state);
+    }
+
+    let stateAfterPlayers = { ...state, tick: nextTick, players: nextPlayers };
+
+    // 2. Run Bomb Logic (spawn, tick, explode, kill)
+    let customAfterBombs = updateBombs(stateAfterPlayers, inputs);
     let playersAfterExplosions = customAfterBombs.players;
     delete customAfterBombs.players;
 
-    let stateAfterBombs = { ...state, players: playersAfterExplosions, customState: customAfterBombs };
+    let stateAfterBombs = { ...stateAfterPlayers, players: playersAfterExplosions, customState: customAfterBombs };
 
-    let nextPlayers = { ...stateAfterBombs.players };
-    for (let pid in nextPlayers) {
-        const input = (inputs && inputs[pid]) || {};
-        nextPlayers[pid] = bombermanMoveAndSlide(pid, nextPlayers[pid], input, stateAfterBombs);
-    }
-
-    let stateAfterBots = updateBots({ ...stateAfterBombs, players: nextPlayers, tick: nextTick });
+    // 3. Run Bot Logic
+    let stateAfterBots = updateBots(stateAfterBombs);
 
     return {
         tick: nextTick,
@@ -286,22 +290,24 @@ export function bombermanUpdate(state, inputs) {
 
 export function bombermanApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
-    newState.tick = delta.t;
-    if (delta.p) {
+    newState.tick = delta.TICK;
+    newState.customState.seed = delta.SEED;
+    if (delta.PLAYERS) {
         const newPlayers = {};
-        delta.p.forEach(dp => { newPlayers[dp.id] = dp; });
+        delta.PLAYERS.forEach(dp => {
+            newPlayers[dp.ID] = { id: dp.ID, x: dp.X, y: dp.Y, h: dp.HEALTH };
+        });
         newState.players = newPlayers;
     }
-    if (delta.l) newState.customState.level = delta.l;
-    if (delta.s !== undefined) newState.customState.seed = delta.s;
-    if (delta.b) {
+    if (delta.LEVEL) newState.customState.level = delta.LEVEL;
+    if (delta.BOMBS) {
         newState.customState.bombs = {};
-        delta.b.forEach(b => { newState.customState.bombs[`${b.x},${b.y}`] = b; });
+        delta.BOMBS.forEach(b => { newState.customState.bombs[`${b.X},${b.Y}`] = { x: b.X, y: b.Y, tm: b.TIMER }; });
     }
-    newState.customState.explosions = delta.e || [];
-    if (delta.bots) {
+    newState.customState.explosions = (delta.EXPLOSIONS || []).map(e => ({ x: e.X, y: e.Y }));
+    if (delta.BOTS) {
         newState.customState.bots = {};
-        delta.bots.forEach((bot, idx) => { newState.customState.bots[idx] = bot; });
+        delta.BOTS.forEach((bot, idx) => { newState.customState.bots[idx] = { x: bot.X, y: bot.Y }; });
     }
     return newState;
 }
