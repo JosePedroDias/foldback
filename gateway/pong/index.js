@@ -69,14 +69,7 @@ function onMessage(data) {
     }
 }
 
-function renderLoop() {
-    window.foldback_test_state.clientState = world.localState;
-    pongRender(ctx, canvas, world.localState, 0, world.myPlayerId, world.msPerTick);
-    requestAnimationFrame(renderLoop);
-}
-requestAnimationFrame(renderLoop);
-
-function sendInput() {
+function tick() {
     if (connection.isOpen() && world.myPlayerId !== null) {
         const serverTick = world.authoritativeState.tick;
         const lead = world.currentTick - serverTick;
@@ -114,8 +107,27 @@ function sendInput() {
             world.lastPingTime = now;
         }
     }
-    setTimeout(sendInput, world.msPerTick);
 }
+
+let lastFrameTime = 0;
+let tickAccumulator = 0;
+
+function gameLoop(now) {
+    if (lastFrameTime > 0) {
+        tickAccumulator = Math.min(tickAccumulator + (now - lastFrameTime), world.msPerTick * 10);
+    }
+    lastFrameTime = now;
+
+    while (tickAccumulator >= world.msPerTick) {
+        tick();
+        tickAccumulator -= world.msPerTick;
+    }
+
+    window.foldback_test_state.clientState = world.localState;
+    pongRender(ctx, canvas, world.localState, 0, world.myPlayerId, world.msPerTick);
+    requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
 
 canvas.addEventListener('mousemove', (e) => { mouseY = e.clientY; });
 
@@ -134,7 +146,6 @@ function onOpen() {
         if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }
         if (connection.isOpen()) connection.send(JSON.stringify({ TYPE: "JOIN" }));
     }, 1000);
-    sendInput();
 }
 
 async function connectWS() {

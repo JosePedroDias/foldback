@@ -83,25 +83,15 @@ async function init() {
         console.log("Assets loaded, connecting...");
         if (protocol === 'webrtc') connectWebRTC();
         else connectWS();
-        requestAnimationFrame(render);
+        requestAnimationFrame(gameLoop);
     } catch (e) {
         console.error("Initialization failed:", e);
     }
 }
 
 let prevRenderState = new Map(); // for jump sounds (og transition lasts many ticks, safe in render)
-function render() {
-    for (let id in world.localState.players) {
-        const p = world.localState.players[id];
-        const prev = prevRenderState.get(id);
-        if (prev && !p.og && prev.og && p.vy < -1000) playSound('jump');
-        prevRenderState.set(id, { og: p.og });
-    }
-    jnbRender(ctx, canvas, world.localState, TILE_SIZE, world.msPerTick);
-    requestAnimationFrame(render);
-}
 
-function sendInput() {
+function tick() {
     if (connection.isOpen() && world.myPlayerId !== null) {
         // Limit how far we can get ahead of the server authoritative state
         const serverTick = world.authoritativeState.tick;
@@ -110,17 +100,17 @@ function sendInput() {
             if (keys.has('a')) dx = -1;
             if (keys.has('d')) dx = 1;
             if (keys.has(' ') || keys.has('w')) jump = true;
-            
+
             const nextTick = world.currentTick + 1;
             const inputsForTick = {};
-            
+
             const input = { dx, jump, t: nextTick };
             connection.send(`(:dx ${dx} :jump ${jump ? "t" : "nil"} :t ${nextTick})`);
-            
+
             inputsForTick[world.myPlayerId] = input;
             if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
             world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
-            
+
             const beforePrediction = snapshotHealth(world.localState.players);
             world.localState = jnbUpdate(world.localState, inputsForTick);
             checkDeaths(beforePrediction, world.localState.players);
@@ -136,7 +126,30 @@ function sendInput() {
             world.lastPingTime = now;
         }
     }
-    setTimeout(sendInput, world.msPerTick);
+}
+
+let lastFrameTime = 0;
+let tickAccumulator = 0;
+
+function gameLoop(now) {
+    if (lastFrameTime > 0) {
+        tickAccumulator = Math.min(tickAccumulator + (now - lastFrameTime), world.msPerTick * 10);
+    }
+    lastFrameTime = now;
+
+    while (tickAccumulator >= world.msPerTick) {
+        tick();
+        tickAccumulator -= world.msPerTick;
+    }
+
+    for (let id in world.localState.players) {
+        const p = world.localState.players[id];
+        const prev = prevRenderState.get(id);
+        if (prev && !p.og && prev.og && p.vy < -1000) playSound('jump');
+        prevRenderState.set(id, { og: p.og });
+    }
+    jnbRender(ctx, canvas, world.localState, TILE_SIZE, world.msPerTick);
+    requestAnimationFrame(gameLoop);
 }
 
 function onOpen() {
@@ -146,7 +159,6 @@ function onOpen() {
         if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }
         if (connection.isOpen()) connection.send("()");
     }, 1000);
-    sendInput();
 }
 
 async function connectWS() {

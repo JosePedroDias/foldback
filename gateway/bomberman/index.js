@@ -30,24 +30,18 @@ function onMessage(data) {
     }
 }
 
-function renderLoop() {
-    bombermanRender(ctx, canvas, world.localState, TILE_SIZE, world.myPlayerId);
-    requestAnimationFrame(renderLoop);
-}
-requestAnimationFrame(renderLoop);
-
 const keys = new Set();
 window.addEventListener('keydown', (e) => { keys.add(e.key.toLowerCase()); });
 window.addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); });
 
-function sendInput() {
+function tick() {
     if (connection.isOpen() && world.myPlayerId !== null) {
         const serverTick = world.authoritativeState.tick;
         const lead = world.currentTick - serverTick;
 
         if (lead < world.maxLead) {
             let dx = 0, dy = 0, bomb = false;
-            
+
             if (isAutoplay) {
                 if (Math.random() < 0.05) dx = (Math.random() < 0.5 ? -1 : 1);
                 if (Math.random() < 0.05) dy = (Math.random() < 0.5 ? -1 : 1);
@@ -59,18 +53,18 @@ function sendInput() {
                 if (keys.has('arrowdown') || keys.has('s')) dy = 1;
                 if (keys.has(' ') || keys.has('b')) bomb = true;
             }
-            
+
             const nextTick = world.currentTick + 1;
             const input = { dx, dy, 'drop-bomb': bomb, t: nextTick };
 
             connection.send(JSON.stringify({ DX: dx, DY: dy, DROP_BOMB: bomb, TICK: nextTick }));
-            
+
             if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
             world.inputBuffer.get(nextTick)[world.myPlayerId] = input;
-            
+
             const inputsForTick = {};
             inputsForTick[world.myPlayerId] = input;
-            
+
             world.localState = bombermanUpdate(world.localState, inputsForTick);
             world.currentTick = nextTick;
             world.history.set(nextTick, JSON.parse(JSON.stringify(world.localState)));
@@ -84,8 +78,26 @@ function sendInput() {
             world.lastPingTime = now;
         }
     }
-    setTimeout(sendInput, world.msPerTick);
 }
+
+let lastFrameTime = 0;
+let tickAccumulator = 0;
+
+function gameLoop(now) {
+    if (lastFrameTime > 0) {
+        tickAccumulator = Math.min(tickAccumulator + (now - lastFrameTime), world.msPerTick * 10);
+    }
+    lastFrameTime = now;
+
+    while (tickAccumulator >= world.msPerTick) {
+        tick();
+        tickAccumulator -= world.msPerTick;
+    }
+
+    bombermanRender(ctx, canvas, world.localState, TILE_SIZE, world.myPlayerId);
+    requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
 
 // Notify server immediately on tab close/navigation
 window.addEventListener('beforeunload', () => {
@@ -101,7 +113,6 @@ function onOpen() {
         if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }
         if (connection.isOpen()) connection.send(JSON.stringify({ TYPE: "JOIN" }));
     }, 1000);
-    sendInput();
 }
 
 async function connectWS() {
