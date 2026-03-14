@@ -163,22 +163,22 @@ export function jnbUpdate(state, inputs) {
 
 export function jnbApplyDelta(baseState, delta) {
     const newState = JSON.parse(JSON.stringify(baseState));
-    newState.tick = delta.t;
-    if (delta.s !== undefined) newState.customState.seed = delta.s;
-    if (delta.p) {
+    newState.tick = delta.TICK;
+    if (delta.SEED !== undefined) newState.customState.seed = delta.SEED;
+    if (delta.PLAYERS) {
         // Replace players entirely from server — ensures left players are removed
         const newPlayers = {};
-        delta.p.forEach(dp => {
-            newPlayers[dp.id] = {
-                id: dp.id,
-                x: dp.x,
-                y: dp.y,
-                vx: dp.vx,
-                vy: dp.vy,
-                h: dp.h,
-                d: dp.d,
-                og: dp.og === 1,
-                k: dp.k || 0
+        delta.PLAYERS.forEach(dp => {
+            newPlayers[dp.ID] = {
+                id: dp.ID,
+                x: dp.X,
+                y: dp.Y,
+                vx: dp.VX,
+                vy: dp.VY,
+                h: dp.HEALTH,
+                d: dp.DIR,
+                og: dp.ON_GROUND === 1,
+                k: dp.KILLS || 0
             };
         });
         newState.players = newPlayers;

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jump and Bump Server-to-Client Messages",
+  "oneOf": [
+    { "$ref": "#/$defs/WELCOME" },
+    { "$ref": "#/$defs/PONG" },
+    { "$ref": "#/$defs/STATE_UPDATE" }
+  ],
+  "$defs": {
+    "WELCOME": {
+      "type": "object",
+      "description": "Sent once after a successful JOIN. Assigns the player their ID.",
+      "properties": {
+        "YOUR_ID": { "type": "integer", "description": "Assigned player ID" },
+        "GAME_ID": { "const": "jumpnbump" },
+        "TICK_RATE": { "type": "integer", "description": "Server tick rate in Hz" }
+      },
+      "required": ["YOUR_ID", "GAME_ID", "TICK_RATE"],
+      "additionalProperties": false
+    },
+    "PONG": {
+      "type": "object",
+      "description": "Echoes the ping ID back so the client can compute RTT.",
+      "properties": {
+        "PONG": { "type": "integer", "description": "The ID from the client's PING message" }
+      },
+      "required": ["PONG"],
+      "additionalProperties": false
+    },
+    "STATE_UPDATE": {
+      "type": "object",
+      "description": "Full game state snapshot, sent every tick.",
+      "properties": {
+        "TICK": { "type": "integer", "description": "Current server tick" },
+        "SEED": { "type": "integer", "description": "Deterministic RNG seed for respawn logic" },
+        "PLAYERS": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PLAYER" },
+          "description": "All players in the game"
+        }
+      },
+      "required": ["TICK", "SEED"],
+      "additionalProperties": false
+    },
+    "PLAYER": {
+      "type": "object",
+      "description": "Player state. All positions/velocities are fixed-point scale 1000.",
+      "properties": {
+        "ID": { "type": "integer", "description": "Player ID" },
+        "X": { "type": "integer", "description": "X position (FP 1000)" },
+        "Y": { "type": "integer", "description": "Y position (FP 1000)" },
+        "VX": { "type": "integer", "description": "X velocity per tick (FP 1000)" },
+        "VY": { "type": "integer", "description": "Y velocity per tick (FP 1000)" },
+        "HEALTH": { "type": "integer", "description": "Health (100 = alive, 0 = dead)" },
+        "DIR": { "type": "integer", "enum": [0, 1], "description": "Facing direction (0 = right, 1 = left)" },
+        "ON_GROUND": { "type": "integer", "enum": [0, 1], "description": "Whether the player is on ground (1) or airborne (0)" },
+        "KILLS": { "type": "integer", "description": "Total kill count" }
+      },
+      "required": ["ID", "X", "Y", "VX", "VY", "HEALTH", "DIR", "ON_GROUND", "KILLS"],
+      "additionalProperties": false
+    }
+  }
+}

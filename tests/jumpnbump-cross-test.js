@@ -1,4 +1,4 @@
-import { jnbUpdate } from '../gateway/jumpnbump/logic.js';
+import { jnbUpdate, jnbApplyDelta } from '../gateway/jumpnbump/logic.js';
 
 function testGravity() {
     console.log("Testing Jump and Bump Gravity (JS)...");
@@ -61,7 +61,59 @@ function testRespawn() {
     }
 }
 
+function testApplyDelta() {
+    console.log("\nTesting Jump and Bump ApplyDelta with UPPERCASE keys (JS)...");
+
+    const baseState = {
+        tick: 0,
+        players: {},
+        customState: { seed: 0 }
+    };
+
+    const delta = {
+        TICK: 42,
+        SEED: 9999,
+        PLAYERS: [
+            { ID: 0, X: 64000, Y: 160000, VX: 250, VY: -500, HEALTH: 100, DIR: 0, ON_GROUND: 1, KILLS: 3 },
+            { ID: 1, X: 128000, Y: 80000, VX: -100, VY: 500, HEALTH: 0, DIR: 1, ON_GROUND: 0, KILLS: 1 }
+        ]
+    };
+
+    const result = jnbApplyDelta(baseState, delta);
+
+    function assertEq(got, expected, label) {
+        if (got === expected) {
+            console.log(`  PASS: ${label} (${got} == ${expected})`);
+        } else {
+            console.log(`  FAIL: ${label} (got ${got}, expected ${expected})`);
+            process.exit(1);
+        }
+    }
+
+    assertEq(result.tick, 42, "ApplyDelta: tick");
+    assertEq(result.customState.seed, 9999, "ApplyDelta: seed");
+    assertEq(Object.keys(result.players).length, 2, "ApplyDelta: 2 players");
+
+    const p0 = result.players[0];
+    assertEq(p0.id, 0, "ApplyDelta: p0 id");
+    assertEq(p0.x, 64000, "ApplyDelta: p0 x");
+    assertEq(p0.y, 160000, "ApplyDelta: p0 y");
+    assertEq(p0.vx, 250, "ApplyDelta: p0 vx");
+    assertEq(p0.vy, -500, "ApplyDelta: p0 vy");
+    assertEq(p0.h, 100, "ApplyDelta: p0 h");
+    assertEq(p0.d, 0, "ApplyDelta: p0 d");
+    assertEq(p0.og, true, "ApplyDelta: p0 og");
+    assertEq(p0.k, 3, "ApplyDelta: p0 k");
+
+    const p1 = result.players[1];
+    assertEq(p1.h, 0, "ApplyDelta: p1 h (dead)");
+    assertEq(p1.d, 1, "ApplyDelta: p1 d");
+    assertEq(p1.og, false, "ApplyDelta: p1 og (airborne)");
+    assertEq(p1.k, 1, "ApplyDelta: p1 k");
+}
+
 testGravity();
 testSquish();
 testRespawn();
+testApplyDelta();
 console.log("\nAll JS Jump and Bump Cross-Platform Tests Passed!");

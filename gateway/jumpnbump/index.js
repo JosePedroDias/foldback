@@ -105,7 +105,7 @@ function tick() {
             const inputsForTick = {};
 
             const input = { dx, jump, t: nextTick };
-            connection.send(`(:dx ${dx} :jump ${jump ? "t" : "nil"} :t ${nextTick})`);
+            connection.send(JSON.stringify({ DX: dx, JUMP: jump, TICK: nextTick }));
 
             inputsForTick[world.myPlayerId] = input;
             if (!world.inputBuffer.has(nextTick)) world.inputBuffer.set(nextTick, {});
@@ -122,7 +122,7 @@ function tick() {
         if (now - world.lastPingTime > 500) {
             const pingId = now;
             world.pings.set(pingId, now);
-            connection.send(`(:ping ${pingId})`);
+            connection.send(JSON.stringify({ TYPE: "PING", ID: pingId }));
             world.lastPingTime = now;
         }
     }
@@ -152,12 +152,19 @@ function gameLoop(now) {
     requestAnimationFrame(gameLoop);
 }
 
+// Notify server immediately on tab close/navigation
+window.addEventListener('beforeunload', () => {
+    if (connection.isOpen()) {
+        connection.send(JSON.stringify({ TYPE: "LEAVE" }));
+    }
+});
+
 function onOpen() {
     console.log("Connection Open!");
-    connection.send("()");
+    connection.send(JSON.stringify({ TYPE: "JOIN" }));
     const joinRetry = setInterval(() => {
         if (world.myPlayerId !== null) { clearInterval(joinRetry); return; }
-        if (connection.isOpen()) connection.send("()");
+        if (connection.isOpen()) connection.send(JSON.stringify({ TYPE: "JOIN" }));
     }, 1000);
 }
 

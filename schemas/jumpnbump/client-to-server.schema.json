@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jump and Bump Client-to-Server Messages",
+  "oneOf": [
+    { "$ref": "#/$defs/JOIN" },
+    { "$ref": "#/$defs/INPUT" },
+    { "$ref": "#/$defs/PING" },
+    { "$ref": "#/$defs/LEAVE" }
+  ],
+  "$defs": {
+    "JOIN": {
+      "type": "object",
+      "description": "Request a player slot when first connecting.",
+      "properties": {
+        "TYPE": { "const": "JOIN" }
+      },
+      "required": ["TYPE"],
+      "additionalProperties": false
+    },
+    "INPUT": {
+      "type": "object",
+      "description": "Per-tick movement input. DX is horizontal direction (-1, 0, 1). JUMP triggers a jump when on ground.",
+      "properties": {
+        "DX": { "type": "integer", "enum": [-1, 0, 1], "description": "Horizontal direction" },
+        "JUMP": { "type": "boolean", "description": "Whether to jump this tick" },
+        "TICK": { "type": "integer", "description": "Target tick for this input" }
+      },
+      "required": ["DX", "JUMP", "TICK"],
+      "additionalProperties": false
+    },
+    "PING": {
+      "type": "object",
+      "description": "Latency probe. Server echoes the ID back as a PONG.",
+      "properties": {
+        "TYPE": { "const": "PING" },
+        "ID": { "type": "integer", "description": "Timestamp used to compute RTT" }
+      },
+      "required": ["TYPE", "ID"],
+      "additionalProperties": false
+    },
+    "LEAVE": {
+      "type": "object",
+      "description": "Client disconnect. Also sent by the Go gateway on WebSocket/WebRTC close.",
+      "properties": {
+        "TYPE": { "const": "LEAVE" }
+      },
+      "required": ["TYPE"],
+      "additionalProperties": false
+    }
+  }
+}
